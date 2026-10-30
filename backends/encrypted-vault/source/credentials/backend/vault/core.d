@@ -6,6 +6,7 @@
 module credentials.backend.vault.core;
 
 import credentials.backend.vault.sodium;
+import credentials.backend.vault.session : VaultSession;
 import credentials.namespace : CredentialNamespace;
 import credentials.secret : SecretBuffer;
 import credentials.store : SecretVisitor;
@@ -14,6 +15,7 @@ enum VaultCoreStatus
 {
     ok,
     notFound,
+    locked,
     unavailable,
     permissionDenied,
     tooLarge,
@@ -576,11 +578,14 @@ VaultCoreStatus decryptPayload(
     scope const(ubyte)[] image,
     ref const HeaderView header,
     CredentialNamespace ns,
-    scope const ubyte[vaultKeyBytes] vaultKey,
+    scope const(ubyte)[] vaultKey,
     out ubyte[] plaintext
 ) @trusted
 {
     plaintext = null;
+
+    if (vaultKey.length != vaultKeyBytes)
+        return VaultCoreStatus.invalidInput;
 
     if (header.payloadCipherOffset > image.length ||
         header.payloadCipherLength > image.length - header.payloadCipherOffset ||
@@ -628,13 +633,16 @@ VaultCoreStatus decryptPayload(
 VaultCoreStatus encryptPayload(
     CredentialNamespace ns,
     scope const ubyte[16] vaultId,
-    scope const ubyte[vaultKeyBytes] vaultKey,
+    scope const(ubyte)[] vaultKey,
     scope const(ubyte)[] plaintext,
     ref ubyte[xNonceBytes] nonce,
     out ubyte[] cipher
 ) @trusted
 {
     cipher = null;
+
+    if (vaultKey.length != vaultKeyBytes)
+        return VaultCoreStatus.invalidInput;
 
     if (plaintext.length > maxPayloadBytes)
         return VaultCoreStatus.tooLarge;
