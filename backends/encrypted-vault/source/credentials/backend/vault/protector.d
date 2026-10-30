@@ -60,12 +60,12 @@ struct VaultUnlockEnvelope
     private ubyte[xNonceBytes] nonce_;
     private ubyte[wrappedVaultKeyBytes] wrappedKey_;
 
-    @property string protectorKind() const @nogc nothrow @safe
+    @property string protectorKind() const scope @safe
     {
-        return kind_;
+        return kind_.idup;
     }
 
-    @property ubyte[] protectorBinding() const @safe
+    @property ubyte[] protectorBinding() const scope @safe
     {
         return binding_.dup;
     }
