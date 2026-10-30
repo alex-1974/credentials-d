@@ -82,15 +82,20 @@ backend if a real consumer needs it.
 
 ### Secret input lifetime
 
-`SecretBuffer` bytes are wrapped with
-`CFDataCreateWithBytesNoCopy(..., kCFAllocatorNull)`.
+`SecretBuffer` bytes are copied into a short-lived CoreFoundation-owned
+immutable `CFData` using `CFDataCreate`.
 
-The CoreFoundation wrapper does not own or duplicate the source bytes.
-`SecItemAdd` / `SecItemUpdate` are invoked synchronously while the scoped
-SecretBuffer view remains alive.
+The copy is intentional. Apple's contract for
+`CFDataCreateWithBytesNoCopy` does not guarantee that the implementation
+actually avoids copying, while the owned form gives a simpler and more stable
+lifetime/ABI boundary across D compilers.
 
-Security.framework necessarily controls any internal copy it needs to persist
-the item.
+`SecItemAdd` / `SecItemUpdate` are invoked synchronously and the temporary
+`CFData` is released immediately afterwards.
+
+credentials-d cannot zero CoreFoundation or Security.framework internal copies
+of the plaintext. The non-GC `SecretBuffer` remains independently controlled
+and zeroized by credentials-d.
 
 ### Secret output lifetime
 
