@@ -499,7 +499,7 @@ private void put(
 private void putAscii(
     scope ubyte[] output,
     ref size_t pos,
-    string value
+    scope string value
 ) @safe
 {
     assert(pos <= output.length);
