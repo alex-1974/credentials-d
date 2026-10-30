@@ -6,8 +6,6 @@
  */
 module credentials.backend.vault.protector;
 
-import credentials.backend.vault.posix_store :
-    EncryptedVaultCredentialStore;
 import credentials.backend.vault.sodium :
     aeadTagBytes,
     crypto_aead_xchacha20poly1305_ietf_decrypt,
@@ -188,14 +186,23 @@ struct VaultUnlockEnvelope
 }
 
 /**
- * Create an additional external-protector wrapper for an unlocked vault.
+ * Consumer invoked only after a protector envelope has authenticated and
+ * recovered one 256-bit vault key.
+ */
+alias RecoveredVaultKeyConsumer = CredentialStatus delegate(
+    scope const(ubyte)[] vaultKey
+) @safe;
+
+/**
+ * Create an additional external-protector wrapper for one random vault key.
  *
- * The vault file itself is not modified. Multiple independent envelopes may be
- * retained for one vault, while the passphrase wrapper remains a recovery
- * path.
+ * The envelope is independent of the persistence backend. Multiple independent
+ * envelopes may be retained for one vault.
  */
 CredentialStatus createVaultUnlockEnvelope(
-    EncryptedVaultCredentialStore store,
+    CredentialNamespace ns,
+    scope const ubyte[16] vaultId,
+    scope const(ubyte)[] vaultKey,
     string protectorKind,
     scope const(ubyte)[] protectorBinding,
     scope VaultWrappingKeySource keySource,
@@ -204,19 +211,12 @@ CredentialStatus createVaultUnlockEnvelope(
 {
     envelope = VaultUnlockEnvelope.init;
 
-    if (store is null ||
+    if (!ns.valid ||
+        vaultKey.length != vaultKeyBytes ||
         keySource is null ||
         !validKind(protectorKind) ||
         protectorBinding.length > maximumProtectorBindingBytes)
         return CredentialStatus.invalidInput;
-
-    ubyte[16] vaultId;
-    ubyte[vaultKeyBytes] vaultKey;
-    scope(exit) zeroFixed(vaultKey);
-
-    auto status = store.copyUnlockMaterial(vaultId, vaultKey);
-    if (status != CredentialStatus.ok)
-        return status;
 
     ubyte[protectorSaltBytes] salt;
     ubyte[xNonceBytes] nonce;
@@ -227,7 +227,7 @@ CredentialStatus createVaultUnlockEnvelope(
 
     auto bindingCopy = protectorBinding.dup;
     auto ad = buildEnvelopeAd(
-        store.credentialNamespace,
+        ns,
         protectorKind,
         bindingCopy,
         vaultId,
@@ -294,29 +294,31 @@ CredentialStatus createVaultUnlockEnvelope(
 }
 
 /**
- * Unlock a vault through an external protector envelope.
+ * Recover a vault key through an external protector envelope.
+ *
+ * The consumer sees the key only after the wrapper AEAD authenticates. A
+ * persistence backend must still authenticate the actual vault payload before
+ * accepting the key as an unlocked session.
  */
-CredentialStatus unlockVaultWithEnvelope(
-    EncryptedVaultCredentialStore store,
+CredentialStatus recoverVaultKeyFromEnvelope(
+    CredentialNamespace ns,
+    scope const ubyte[16] currentVaultId,
     scope const VaultUnlockEnvelope envelope,
-    scope VaultWrappingKeySource keySource
+    scope VaultWrappingKeySource keySource,
+    scope RecoveredVaultKeyConsumer consumer
 ) @safe
 {
-    if (store is null ||
+    if (!ns.valid ||
         keySource is null ||
+        consumer is null ||
         !envelope.valid)
         return CredentialStatus.invalidInput;
-
-    ubyte[16] currentVaultId;
-    auto status = store.currentVaultId(currentVaultId);
-    if (status != CredentialStatus.ok)
-        return status;
 
     if (currentVaultId != envelope.vaultId_)
         return CredentialStatus.invalidInput;
 
     auto ad = buildEnvelopeAd(
-        store.credentialNamespace,
+        ns,
         envelope.kind_,
         envelope.binding_,
         envelope.vaultId_,
@@ -374,7 +376,7 @@ CredentialStatus unlockVaultWithEnvelope(
     if (!visitorCalled)
         return CredentialStatus.backendFailure;
 
-    return store.unlockWithVaultKey(vaultKey[]);
+    return consumer(vaultKey[]);
 }
 
 private ubyte[] buildEnvelopeAd(
