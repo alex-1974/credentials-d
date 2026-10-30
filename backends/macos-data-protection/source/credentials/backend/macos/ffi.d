@@ -76,11 +76,10 @@ extern(C) @nogc nothrow
         CFStringEncoding encoding
     );
 
-    CFDataRef CFDataCreateWithBytesNoCopy(
+    CFDataRef CFDataCreate(
         CFAllocatorRef allocator,
         scope const(ubyte)* bytes,
-        CFIndex length,
-        CFAllocatorRef bytesDeallocator
+        CFIndex length
     );
     CFIndex CFDataGetLength(CFDataRef data);
     const(ubyte)* CFDataGetBytePtr(CFDataRef data);
@@ -109,7 +108,6 @@ extern(C) __gshared
     // CoreFoundation exported values/callback tables.
     CFTypeRef kCFBooleanTrue;
     CFTypeRef kCFBooleanFalse;
-    CFAllocatorRef kCFAllocatorNull;
     CFDictionaryKeyCallBacks kCFTypeDictionaryKeyCallBacks;
     CFDictionaryValueCallBacks kCFTypeDictionaryValueCallBacks;
 
