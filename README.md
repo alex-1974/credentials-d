@@ -60,8 +60,9 @@ before an encrypted-vault backend is admitted.
 
 See [ADR 0001](docs/adr/0001-security-scope.md) for the initial scope,
 [Threat Model and Security Contract](docs/security/THREAT_MODEL.md) for the
-normative security boundary, and [SECURITY.md](SECURITY.md) for vulnerability
-reporting.
+normative security boundary, [Native platform credential-store
+qualification](docs/security/PLATFORM_STORES.md) for the OS backend comparison,
+and [SECURITY.md](SECURITY.md) for vulnerability reporting.
 
 
 ## Public API prototype
