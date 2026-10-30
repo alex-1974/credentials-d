@@ -22,7 +22,7 @@ jobs:
       matrix:
         os:
           - windows-2025
-          - macos-15
+          - macos-15-intel
         compiler:
           - dmd-2.111.0
           - ldc-1.41.0
