@@ -103,16 +103,17 @@ void main()
         CredentialStatus.tooLarge);
     assert(!oversizedHandle.valid);
 
+    auto deletedHandle = handle;
     assert(store.remove(handle) == CredentialStatus.ok);
     handle = CredentialHandle.init;
 
     bool calledAfterDelete;
-    assert(store.acquire(
-        handle,
+    assert(reopened.acquire(
+        deletedHandle,
         (scope const(ubyte)[]) @safe
         {
             calledAfterDelete = true;
         }
-    ) == CredentialStatus.invalidInput);
+    ) == CredentialStatus.notFound);
     assert(!calledAfterDelete);
 }
