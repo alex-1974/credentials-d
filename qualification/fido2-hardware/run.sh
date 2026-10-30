@@ -15,12 +15,30 @@ QUAL_ROOT="$ROOT/qualification/fido2-hardware"
 BINARY="$QUAL_ROOT/credentials-d-fido2-hardware-qualification"
 
 DISCOVER_ONLY=0
+HAS_WORK_DIR=0
 for arg in "$@"; do
   if [[ "$arg" == "--discover-only" ]]; then
     DISCOVER_ONLY=1
-    break
+  elif [[ "$arg" == "--work-dir" ]]; then
+    HAS_WORK_DIR=1
   fi
 done
+
+AUTO_WORK_DIR=""
+RUNNER_ARGS=("$@")
+
+if [[ "$DISCOVER_ONLY" == "0" && "$HAS_WORK_DIR" == "0" ]]; then
+  AUTO_WORK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/credentials-d-fido2-qualification.XXXXXX")" || {
+    echo "Failed to create private qualification work directory." >&2
+    return 2 2>/dev/null || true
+  }
+  chmod 700 "$AUTO_WORK_DIR" || {
+    rm -rf -- "$AUTO_WORK_DIR"
+    echo "Failed to secure qualification work directory." >&2
+    return 2 2>/dev/null || true
+  }
+  RUNNER_ARGS+=(--work-dir "$AUTO_WORK_DIR")
+fi
 
 restore_tty() {
   if [[ -t 0 ]]; then
@@ -28,9 +46,18 @@ restore_tty() {
   fi
 }
 
+cleanup() {
+  restore_tty
+  if [[ -n "$AUTO_WORK_DIR" ]]; then
+    rm -rf -- "$AUTO_WORK_DIR"
+  fi
+}
+
 if [[ "$DISCOVER_ONLY" == "0" && -t 0 ]]; then
-  trap restore_tty EXIT INT TERM
+  trap cleanup EXIT INT TERM
   stty -echo
+elif [[ "$DISCOVER_ONLY" == "0" ]]; then
+  trap cleanup EXIT INT TERM
 fi
 
 {
@@ -53,7 +80,7 @@ dub build \
 BUILD_STATUS=${PIPESTATUS[0]}
 
 if [[ "$BUILD_STATUS" -ne 0 ]]; then
-  restore_tty
+  cleanup
   trap - EXIT INT TERM
   {
     echo "build_exit_code=$BUILD_STATUS"
@@ -67,10 +94,10 @@ fi
   echo "binary=$BINARY"
 } | tee -a "$RECEIPT"
 
-"$BINARY" "$@" 2>&1 | tee -a "$RECEIPT"
+"$BINARY" "${RUNNER_ARGS[@]}" 2>&1 | tee -a "$RECEIPT"
 PROGRAM_STATUS=${PIPESTATUS[0]}
 
-restore_tty
+cleanup
 trap - EXIT INT TERM
 
 {
