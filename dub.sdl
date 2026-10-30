@@ -13,3 +13,5 @@ libs "bcrypt" platform="windows"
 toolchainRequirements frontend=">=2.111.0"
 
 subPackage "backends/windows"
+
+subPackage "backends/linux-secret-service"
