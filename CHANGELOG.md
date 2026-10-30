@@ -4,6 +4,9 @@ All notable changes to this project will be documented here.
 
 ## Unreleased
 
+- Gate native credential backends and encrypted-vault security checks on release candidates targeting `main`.
+- Add a bounded malformed-vault header corpus covering structural truncation, invalid KDF costs, lengths, namespace syntax and trailing data before key derivation.
+
 - Bootstrap repository and package identity.
 - Establish initial security scope and roadmap.
 - Define the first public `SecretBuffer`, `CredentialHandle`, and
