@@ -1,0 +1,8 @@
+name "credentials-d-negative-secret-string"
+description "SecretBuffer must not implicitly convert to string"
+license "MIT"
+
+targetType "executable"
+sourcePaths "source"
+
+dependency "credentials-d" path="../../.."
