@@ -34,15 +34,14 @@ struct Fido2VaultBinding
     private ubyte[] credentialId_;
     private Fido2VerificationPolicy policy_;
 
-    @property string rpId() const @nogc nothrow @safe
+    @property string rpId() const @safe
     {
-        return rpId_;
+        return rpId_.idup;
     }
 
-    @property const(ubyte)[] credentialId() const scope
-        @nogc nothrow @safe
+    @property ubyte[] credentialId() const @safe
     {
-        return credentialId_;
+        return credentialId_.dup;
     }
 
     @property Fido2VerificationPolicy verificationPolicy() const
