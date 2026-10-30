@@ -4,6 +4,13 @@ All notable changes to this project will be documented here.
 
 ## Unreleased
 
+- Add generic authenticated external vault-key envelopes with multiple-wrapper
+  and passphrase-recovery semantics.
+- Add an optional FIDO2 hmac-secret vault-key protector through a narrow
+  libfido2 FFI, with explicit user-presence / UV policy and transient
+  SecretBuffer PIN handling.
+- Add a no-hardware libfido2 ABI/discovery gate for DMD and LDC.
+
 - Add concurrent encrypted-vault writer and crash-residue regression coverage.
 - Add a package-private libFuzzer-compatible vault-header parser target and compile it in the vault security gate.
 

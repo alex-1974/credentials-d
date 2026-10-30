@@ -13,9 +13,10 @@ profile management are deliberately outside this package.
 
 Pre-0.1 API qualification.
 
-The first credential-store contract is implemented and tested, but remains
-subject to 0.x refinement. No platform credential backend or encrypted-vault
-backend has been selected.
+The semantic core, native desktop credential-store backends and optional
+encrypted-vault backend are implemented and security-gated. The API remains
+subject to 0.x refinement; the macOS Data Protection Keychain still requires a
+signed app-like production qualification.
 
 ## Intended scope
 
@@ -26,8 +27,9 @@ The library is expected to own:
 - a common credential-store contract;
 - deterministic memory/mock backends for contract testing;
 - Linux Secret Service, Windows Credential Manager and macOS Keychain adapters;
-- optionally, an application-controlled encrypted-vault backend if its need and
-  cryptographic dependency are independently qualified.
+- an optional application-controlled encrypted-vault backend using a qualified
+  narrow libsodium boundary;
+- optional hardware-assisted vault-key protectors such as FIDO2 hmac-secret.
 
 It does not aim to provide:
 
@@ -50,13 +52,14 @@ zeroization uses compiler-recognized volatile stores. Persistence remains behind
 an explicit store boundary.
 
 Platform credential stores are expected to be the normal persistence mechanism.
-An encrypted file vault is a possible additional backend, not the definition of
-the library. Backend failure never silently downgrades to plaintext or another
-weaker store.
+An encrypted file vault is an explicit additional backend, not the definition
+of the library. Backend failure never silently downgrades to plaintext or
+another weaker store.
 
-No cryptographic backend decision has been made. Botan, libsodium or another
-implementation must be qualified against the exact narrow primitive set needed
-before an encrypted-vault backend is admitted.
+The optional encrypted vault uses official libsodium through a narrow private
+FFI: Argon2id for the passphrase wrapper and XChaCha20-Poly1305-IETF for
+authenticated encryption. Optional FIDO2 support is a vault-key protector,
+never a CredentialStore and never a place to store application credentials.
 
 See [ADR 0001](docs/adr/0001-security-scope.md) for the initial scope,
 [Threat Model and Security Contract](docs/security/THREAT_MODEL.md) for the
@@ -205,6 +208,54 @@ It does not claim hardware-backed or Credential Guard protection, and it does
 not silently fall back when Windows Credential Manager is unavailable.
 
 See [ADR 0004](docs/adr/0004-windows-credential-manager.md).
+
+
+## FIDO2 vault unlock
+
+Hardware-assisted vault unlock is available through the optional:
+
+```text
+credentials-d:fido2-vault
+```
+
+FIDO2 is deliberately **not** another credential store. A FIDO2 authenticator
+never receives OAuth tokens, API keys or vault records. Instead, a dedicated
+FIDO2 credential uses the CTAP `hmac-secret` extension to derive a
+credential-scoped 32-byte wrapping key. That key authenticates and unwraps the
+same random vault key already used by the encrypted vault.
+
+The encrypted-vault format remains unchanged. Additional unlock methods are
+stored as independent non-secret `VaultUnlockEnvelope` values, so one vault
+may retain:
+
+```text
+random vault key
+├── existing passphrase / Argon2id recovery wrapper
+├── FIDO2 security key A envelope
+└── FIDO2 backup key B envelope
+```
+
+Two interaction policies are explicit:
+
+- `userPresence`: touch/user presence, with UV explicitly disabled;
+- `userVerificationRequired`: UV required and enrollment requests
+  `credProtect=UV_REQUIRED`; unsupported authenticators fail rather than
+  silently downgrading.
+
+Authenticator device paths are runtime selectors and are never persisted as
+security identity. RP id, opaque credential id and verification policy form the
+persisted non-secret FIDO2 binding.
+
+FIDO2 operations use official libfido2 through a narrow private FFI and are
+synchronous; applications must execute enrollment/unlock away from a GUI/render
+thread. PIN overloads accept `SecretBuffer`, create only one temporary
+NUL-terminated native buffer, and overwrite it before release.
+
+CI qualifies the ABI, parsing, envelope cryptography and no-hardware discovery
+path. Production claims involving an actual authenticator require the separate
+physical-device qualification.
+
+See [ADR 0008](docs/adr/0008-fido2-vault-key-protection.md).
 
 ## Compatibility baseline
 

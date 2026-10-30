@@ -65,6 +65,24 @@ Only after the store contract is stable:
 
 No custom cryptographic primitive is in scope.
 
+## M4.1 — Hardware-assisted vault unlock
+
+Qualify optional external vault-key protectors without changing the native
+CredentialStore contract:
+
+- generic authenticated vault-key envelopes;
+- multiple independent wrappers for one random vault key;
+- FIDO2 / CTAP hmac-secret through a narrow libfido2 FFI;
+- explicit user-presence versus user-verification policy;
+- no silent downgrade when UV / credProtect cannot be satisfied;
+- transient SecretBuffer-based PIN handling;
+- no device-path persistence;
+- no application credential storage on the authenticator;
+- deterministic/no-hardware CI plus a separate physical-authenticator
+  production qualification.
+
+The existing passphrase wrapper remains a recovery path for vault format v1.
+
 ## M5 — First public release
 
 Release only after:
