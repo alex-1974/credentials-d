@@ -9,7 +9,9 @@ import credentials.backend.vault.core :
     VaultCoreStatus,
     createEmptyVaultImage,
     unlockVaultSession,
+    unlockVaultSessionWithKey,
     validateVaultImageHeader,
+    vaultIdFromImage,
     vaultAcquireUnlocked,
     vaultPutUnlocked,
     vaultRemoveUnlocked,
@@ -22,6 +24,7 @@ import credentials.backend.vault.posix_file :
     readVaultImage,
     replaceVaultImage;
 import credentials.backend.vault.session : VaultSession;
+import credentials.backend.vault.sodium : vaultKeyBytes;
 import credentials.handle : CredentialHandle;
 import credentials.namespace : CredentialNamespace;
 import credentials.secret : SecretBuffer;
@@ -409,6 +412,142 @@ final class EncryptedVaultCredentialStore : CredentialStore
                 return CredentialStatus.commitUncertain;
 
             return mapFileForAccess(fileStatus);
+        }
+    }
+
+    /**
+     * Copy the current authenticated vault id and retained vault key for
+     * creation of an external unlock envelope.
+     *
+     * Package-private: callers outside the vault implementation never receive
+     * raw vault-key bytes.
+     */
+    package(credentials.backend.vault) CredentialStatus copyUnlockMaterial(
+        out ubyte[16] vaultId,
+        out ubyte[vaultKeyBytes] vaultKey
+    ) @safe
+    {
+        synchronized (this)
+        {
+            vaultId[] = 0;
+            vaultKey[] = 0;
+
+            if (!session_.unlocked)
+                return CredentialStatus.locked;
+
+            VaultFileLock fileLock;
+            auto fileStatus =
+                acquireVaultFileLock(path_, fileLock);
+            if (fileStatus != VaultFileStatus.ok)
+                return mapFileForAccess(fileStatus);
+
+            ubyte[] image;
+            fileStatus = readVaultImage(path_, image);
+            if (fileStatus != VaultFileStatus.ok)
+                return mapFileForRead(fileStatus);
+
+            const coreStatus =
+                vaultIdFromImage(image, namespace_, vaultId);
+            if (coreStatus != VaultCoreStatus.ok)
+                return handleCoreFailure(coreStatus);
+
+            if (!session_.matchesVault(vaultId))
+            {
+                invalidateSession();
+                vaultId[] = 0;
+                return CredentialStatus.locked;
+            }
+
+            bool copied;
+            session_.withKey((scope const(ubyte)[] key) @safe
+            {
+                if (key.length == vaultKey.length)
+                {
+                    vaultKey[] = key[];
+                    copied = true;
+                }
+            });
+
+            if (!copied)
+            {
+                vaultKey[] = 0;
+                return CredentialStatus.backendFailure;
+            }
+
+            return CredentialStatus.ok;
+        }
+    }
+
+    /**
+     * Read the current non-secret vault id while remaining locked.
+     */
+    package(credentials.backend.vault) CredentialStatus currentVaultId(
+        out ubyte[16] vaultId
+    ) @safe
+    {
+        synchronized (this)
+        {
+            vaultId[] = 0;
+
+            VaultFileLock fileLock;
+            auto fileStatus =
+                acquireVaultFileLock(path_, fileLock);
+            if (fileStatus != VaultFileStatus.ok)
+                return mapFileForAccess(fileStatus);
+
+            ubyte[] image;
+            fileStatus = readVaultImage(path_, image);
+            if (fileStatus != VaultFileStatus.ok)
+                return mapFileForRead(fileStatus);
+
+            return mapCore(
+                vaultIdFromImage(image, namespace_, vaultId)
+            );
+        }
+    }
+
+    /**
+     * Unlock from a vault key recovered by an authenticated external
+     * protector envelope.
+     */
+    package(credentials.backend.vault) CredentialStatus unlockWithVaultKey(
+        scope const(ubyte)[] vaultKey
+    ) @safe
+    {
+        synchronized (this)
+        {
+            if (session_.unlocked)
+                return CredentialStatus.ok;
+
+            if (vaultKey.length != vaultKeyBytes)
+                return CredentialStatus.invalidInput;
+
+            VaultFileLock fileLock;
+            auto fileStatus =
+                acquireVaultFileLock(path_, fileLock);
+            if (fileStatus != VaultFileStatus.ok)
+                return mapFileForAccess(fileStatus);
+
+            ubyte[] image;
+            fileStatus = readVaultImage(path_, image);
+            if (fileStatus != VaultFileStatus.ok)
+                return mapFileForRead(fileStatus);
+
+            const coreStatus = unlockVaultSessionWithKey(
+                image,
+                namespace_,
+                vaultKey,
+                session_
+            );
+
+            if (coreStatus != VaultCoreStatus.ok)
+            {
+                invalidateSession();
+                return mapCore(coreStatus);
+            }
+
+            refreshHandlePrefix();
+            return CredentialStatus.ok;
         }
     }
 
