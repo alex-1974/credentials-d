@@ -11,10 +11,11 @@ profile management are deliberately outside this package.
 
 ## Status
 
-Pre-0.1 architecture qualification.
+Pre-0.1 API qualification.
 
-The package and test scaffolding exist, but the public credential API is
-intentionally not frozen and no encrypted-vault backend has been selected.
+The first credential-store contract is implemented and tested, but remains
+subject to 0.x refinement. No platform credential backend or encrypted-vault
+backend has been selected.
 
 ## Intended scope
 
@@ -60,6 +61,46 @@ See [ADR 0001](docs/adr/0001-security-scope.md) for the initial scope,
 [Threat Model and Security Contract](docs/security/THREAT_MODEL.md) for the
 normative security boundary, and [SECURITY.md](SECURITY.md) for vulnerability
 reporting.
+
+
+## Public API prototype
+
+The first public contract separates persistable handles from plaintext:
+
+```d
+import credentials :
+    CredentialHandle,
+    CredentialStatus,
+    MemoryCredentialStore,
+    SecretBuffer;
+
+auto store = new MemoryCredentialStore;
+auto secret = new SecretBuffer(cast(const(ubyte)[]) "token");
+
+CredentialHandle handle;
+assert(store.store(secret, handle) == CredentialStatus.ok);
+
+assert(store.acquire(handle, (scope const(ubyte)[] bytes) @safe
+{
+    // Use plaintext only inside this explicit acquisition callback.
+}) == CredentialStatus.ok);
+
+assert(store.remove(handle) == CredentialStatus.ok);
+```
+
+`CredentialHandle.serialize()` is intended for normal application settings.
+Credential plaintext is not.
+
+`SecretBuffer` currently uses GC-managed mutable storage and best-effort
+overwrite on `clear()`; this is deliberately **not** documented as guaranteed
+secure zeroization. The representation can be strengthened later without
+changing the consumer-facing acquisition contract.
+
+`MemoryCredentialStore` is deterministic, ephemeral and thread-confined. It is
+a contract/reference backend, not a persistent security mechanism.
+
+See [ADR 0002](docs/adr/0002-credential-store-public-contract.md) for the API
+semantics.
 
 ## Compatibility baseline
 
