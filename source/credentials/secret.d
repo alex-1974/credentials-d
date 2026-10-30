@@ -122,13 +122,12 @@ struct SecretBuffer
         length_ = 0;
     }
 
-    /**
-     * Redacted representation for accidental formatting/logging.
+    /*
+     * Intentionally no toString/opFormat implementation.
+     *
+     * SecretBuffer is non-copyable, so common variadic formatting paths reject
+     * it at compile time instead of producing any textual representation.
      */
-    string toString() const @safe
-    {
-        return "<SecretBuffer:redacted>";
-    }
 }
 
 /**
@@ -159,18 +158,6 @@ unittest
 
     secret.clear();
     assert(secret.empty);
-}
-
-@("SecretBuffer formatting is redacted")
-unittest
-{
-    import std.format : format;
-
-    auto secret = SecretBuffer(cast(const(ubyte)[]) "SENTINEL_SECRET");
-    const rendered = format("%s", secret);
-
-    assert(rendered == "<SecretBuffer:redacted>");
-    assert(rendered != "SENTINEL_SECRET");
 }
 
 @("secureZero overwrites every byte")
