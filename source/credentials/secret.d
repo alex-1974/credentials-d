@@ -122,6 +122,31 @@ struct SecretBuffer
         length_ = 0;
     }
 
+    /**
+     * Replace the owned plaintext with one new copy.
+     *
+     * This package-private operation allocates the replacement before clearing
+     * the current value, so allocation failure leaves the current secret
+     * intact. It is used by credential backends that retain a derived secret
+     * such as an unlocked vault key.
+     */
+    package(credentials) void reset(scope const(ubyte)[] source) scope @trusted
+    {
+        ubyte* next;
+        if (source.length != 0)
+        {
+            next = cast(ubyte*) malloc(source.length);
+            if (next is null)
+                onOutOfMemoryError();
+
+            next[0 .. source.length] = source[];
+        }
+
+        clear();
+        data_ = next;
+        length_ = source.length;
+    }
+
     /*
      * Intentionally no toString/opFormat implementation.
      *

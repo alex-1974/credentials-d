@@ -1,0 +1,8 @@
+name "credentials-d-encrypted-vault-posix-integration"
+description "Persistent POSIX encrypted-vault integration qualification"
+license "MIT"
+
+targetType "executable"
+sourcePaths "source"
+
+dependency "credentials-d:encrypted-vault" path="../.."

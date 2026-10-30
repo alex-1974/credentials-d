@@ -49,14 +49,43 @@ jobs:
 
       - name: Encrypted-vault subpackage tests
         shell: bash
-        run: dub test --root=backends/encrypted-vault --compiler="$DC" --force
+        run: |
+          dub test \
+            --root=backends/encrypted-vault \
+            --compiler="$DC" \
+            --force
 
       - name: Encrypted-vault subpackage tests with DIP1000
         shell: bash
         run: |
-          DFLAGS="-unittest -preview=dip1000"             dub test --root=backends/encrypted-vault --compiler="$DC" --force
+          DFLAGS="-unittest -preview=dip1000" \
+            dub test \
+              --root=backends/encrypted-vault \
+              --compiler="$DC" \
+              --force
+
+      - name: POSIX encrypted-vault integration
+        shell: bash
+        run: |
+          dub run \
+            --root=tests/encrypted-vault-posix-integration \
+            --compiler="$DC" \
+            --force
+
+      - name: POSIX encrypted-vault integration with DIP1000
+        shell: bash
+        run: |
+          DFLAGS="-preview=dip1000" \
+            dub run \
+              --root=tests/encrypted-vault-posix-integration \
+              --compiler="$DC" \
+              --force
 
       - name: Encrypted-vault release build
         shell: bash
         run: |
-          dub build             --root=backends/encrypted-vault             --build=release             --compiler="$DC"             --force
+          dub build \
+            --root=backends/encrypted-vault \
+            --build=release \
+            --compiler="$DC" \
+            --force

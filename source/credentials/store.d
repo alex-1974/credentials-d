@@ -27,6 +27,7 @@ enum CredentialStatus
     tooLarge,
     ambiguous,
     corruptData,
+    commitUncertain,
     invalidInput,
     backendFailure
 }
@@ -68,6 +69,7 @@ enum StoreMobility
 {
     processOnly,
     localDevice,
+    portableFile,
     mayRoam,
     synchronizable
 }

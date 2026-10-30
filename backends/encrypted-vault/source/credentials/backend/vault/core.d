@@ -6,6 +6,7 @@
 module credentials.backend.vault.core;
 
 import credentials.backend.vault.sodium;
+import credentials.backend.vault.session : VaultSession;
 import credentials.namespace : CredentialNamespace;
 import credentials.secret : SecretBuffer;
 import credentials.store : SecretVisitor;
@@ -14,6 +15,7 @@ enum VaultCoreStatus
 {
     ok,
     notFound,
+    locked,
     unavailable,
     permissionDenied,
     tooLarge,
@@ -576,11 +578,14 @@ VaultCoreStatus decryptPayload(
     scope const(ubyte)[] image,
     ref const HeaderView header,
     CredentialNamespace ns,
-    scope const ubyte[vaultKeyBytes] vaultKey,
+    scope const(ubyte)[] vaultKey,
     out ubyte[] plaintext
 ) @trusted
 {
     plaintext = null;
+
+    if (vaultKey.length != vaultKeyBytes)
+        return VaultCoreStatus.invalidInput;
 
     if (header.payloadCipherOffset > image.length ||
         header.payloadCipherLength > image.length - header.payloadCipherOffset ||
@@ -628,13 +633,16 @@ VaultCoreStatus decryptPayload(
 VaultCoreStatus encryptPayload(
     CredentialNamespace ns,
     scope const ubyte[16] vaultId,
-    scope const ubyte[vaultKeyBytes] vaultKey,
+    scope const(ubyte)[] vaultKey,
     scope const(ubyte)[] plaintext,
     ref ubyte[xNonceBytes] nonce,
     out ubyte[] cipher
 ) @trusted
 {
     cipher = null;
+
+    if (vaultKey.length != vaultKeyBytes)
+        return VaultCoreStatus.invalidInput;
 
     if (plaintext.length > maxPayloadBytes)
         return VaultCoreStatus.tooLarge;
@@ -970,6 +978,446 @@ VaultCoreStatus openPayload(
 
     return VaultCoreStatus.ok;
 }
+
+
+package(credentials.backend.vault):
+
+enum size_t maximumVaultImageBytes =
+    fixedHeaderBytes + 96 + maxPayloadBytes + aeadTagBytes;
+
+VaultCoreStatus validateVaultImageHeader(
+    scope const(ubyte)[] image,
+    CredentialNamespace ns
+) @safe
+{
+    HeaderView header;
+    return parseHeader(image, ns, header);
+}
+
+VaultCoreStatus unlockVaultSession(
+    scope const(ubyte)[] image,
+    CredentialNamespace ns,
+    scope ref const SecretBuffer passphrase,
+    VaultSession session
+) @safe
+{
+    if (session is null)
+        return VaultCoreStatus.invalidInput;
+
+    if (!sodiumReady())
+        return VaultCoreStatus.unavailable;
+
+    HeaderView header;
+    auto status = parseHeader(image, ns, header);
+    if (status != VaultCoreStatus.ok)
+        return status;
+
+    ubyte[vaultKeyBytes] vaultKey;
+    scope(exit) zeroFixed(vaultKey);
+
+    status = unwrapKey(header, ns, passphrase, vaultKey);
+    if (status != VaultCoreStatus.ok)
+        return status;
+
+    ubyte[] plaintext;
+    scope(exit)
+    {
+        if (plaintext !is null)
+            zero(plaintext);
+    }
+
+    status = decryptPayload(
+        image,
+        header,
+        ns,
+        vaultKey[],
+        plaintext
+    );
+    if (status != VaultCoreStatus.ok)
+        return status;
+
+    RecordView[] records;
+    status = parsePayload(plaintext, records);
+    if (status != VaultCoreStatus.ok)
+        return status;
+
+    session.set(vaultKey[], header.vaultId);
+    return VaultCoreStatus.ok;
+}
+
+VaultCoreStatus openPayloadUnlocked(
+    scope const(ubyte)[] image,
+    CredentialNamespace ns,
+    VaultSession session,
+    out HeaderView header,
+    out ubyte[] plaintext,
+    out RecordView[] records
+) @safe
+{
+    plaintext = null;
+    records = null;
+
+    if (session is null || !session.unlocked)
+        return VaultCoreStatus.locked;
+
+    auto status = parseHeader(image, ns, header);
+    if (status != VaultCoreStatus.ok)
+        return status;
+
+    if (!session.matchesVault(header.vaultId))
+        return VaultCoreStatus.locked;
+
+    status = VaultCoreStatus.backendFailure;
+    session.withKey((scope const(ubyte)[] key) @safe
+    {
+        status = decryptPayload(
+            image,
+            header,
+            ns,
+            key,
+            plaintext
+        );
+    });
+
+    if (status != VaultCoreStatus.ok)
+        return status;
+
+    status = parsePayload(plaintext, records);
+    if (status != VaultCoreStatus.ok)
+    {
+        zero(plaintext);
+        plaintext = null;
+        records = null;
+        return status;
+    }
+
+    return VaultCoreStatus.ok;
+}
+
+VaultCoreStatus encryptPayloadUnlocked(
+    VaultSession session,
+    CredentialNamespace ns,
+    scope const ubyte[16] vaultId,
+    scope const(ubyte)[] plaintext,
+    ref ubyte[xNonceBytes] nonce,
+    out ubyte[] cipher
+) @safe
+{
+    cipher = null;
+
+    if (session is null || !session.unlocked)
+        return VaultCoreStatus.locked;
+
+    if (!session.matchesVault(vaultId))
+        return VaultCoreStatus.locked;
+
+    auto status = VaultCoreStatus.backendFailure;
+    session.withKey((scope const(ubyte)[] key) @safe
+    {
+        status = encryptPayload(
+            ns,
+            vaultId,
+            key,
+            plaintext,
+            nonce,
+            cipher
+        );
+    });
+
+    return status;
+}
+
+VaultCoreStatus vaultPutUnlocked(
+    ref ubyte[] image,
+    CredentialNamespace ns,
+    VaultSession session,
+    scope ref const SecretBuffer secret,
+    out string locator
+) @safe
+{
+    locator = null;
+
+    if (secret.length > maxSecretBytes)
+        return VaultCoreStatus.tooLarge;
+
+    HeaderView header;
+    ubyte[] plaintext;
+    RecordView[] records;
+    scope(exit)
+    {
+        if (plaintext !is null)
+            zero(plaintext);
+    }
+
+    auto status = openPayloadUnlocked(
+        image,
+        ns,
+        session,
+        header,
+        plaintext,
+        records
+    );
+    if (status != VaultCoreStatus.ok)
+        return status;
+
+    ubyte[16] id;
+    if (!generateUniqueId(records, id))
+        return VaultCoreStatus.backendFailure;
+
+    ubyte[] nextPayload;
+    secret.withBytes((scope const(ubyte)[] bytes) @safe
+    {
+        nextPayload = buildPayload(
+            plaintext,
+            records,
+            -1,
+            bytes,
+            true,
+            id
+        );
+    });
+    if (nextPayload is null)
+        return VaultCoreStatus.tooLarge;
+    scope(exit) zero(nextPayload);
+
+    ubyte[] nextCipher;
+    status = encryptPayloadUnlocked(
+        session,
+        ns,
+        header.vaultId,
+        nextPayload,
+        header.payloadNonce,
+        nextCipher
+    );
+    if (status != VaultCoreStatus.ok)
+        return status;
+
+    auto nextImage = serializeImage(ns, header, nextCipher);
+    if (nextImage is null)
+        return VaultCoreStatus.backendFailure;
+
+    image = nextImage;
+    locator = locatorOf(id);
+    return VaultCoreStatus.ok;
+}
+
+VaultCoreStatus vaultAcquireUnlocked(
+    scope const(ubyte)[] image,
+    CredentialNamespace ns,
+    VaultSession session,
+    string locator,
+    scope SecretVisitor visitor
+) @safe
+{
+    if (visitor is null)
+        return VaultCoreStatus.invalidInput;
+
+    ubyte[16] id;
+    if (!parseLocator(locator, id))
+        return VaultCoreStatus.invalidInput;
+
+    HeaderView header;
+    ubyte[] plaintext;
+    RecordView[] records;
+    scope(exit)
+    {
+        if (plaintext !is null)
+            zero(plaintext);
+    }
+
+    auto status = openPayloadUnlocked(
+        image,
+        ns,
+        session,
+        header,
+        plaintext,
+        records
+    );
+    if (status != VaultCoreStatus.ok)
+        return status;
+
+    const index = findRecord(records, id);
+    if (index < 0)
+        return VaultCoreStatus.notFound;
+
+    const record = records[cast(size_t)index];
+    if (record.secretOffset > plaintext.length ||
+        record.secretLength > plaintext.length - record.secretOffset)
+        return VaultCoreStatus.corruptData;
+
+    visitor(plaintext[
+        record.secretOffset ..
+        record.secretOffset + record.secretLength
+    ]);
+    return VaultCoreStatus.ok;
+}
+
+VaultCoreStatus vaultReplaceUnlocked(
+    ref ubyte[] image,
+    CredentialNamespace ns,
+    VaultSession session,
+    string locator,
+    scope ref const SecretBuffer replacement
+) @safe
+{
+    if (replacement.length > maxSecretBytes)
+        return VaultCoreStatus.tooLarge;
+
+    ubyte[16] id;
+    if (!parseLocator(locator, id))
+        return VaultCoreStatus.invalidInput;
+
+    HeaderView header;
+    ubyte[] plaintext;
+    RecordView[] records;
+    scope(exit)
+    {
+        if (plaintext !is null)
+            zero(plaintext);
+    }
+
+    auto status = openPayloadUnlocked(
+        image,
+        ns,
+        session,
+        header,
+        plaintext,
+        records
+    );
+    if (status != VaultCoreStatus.ok)
+        return status;
+
+    const index = findRecord(records, id);
+    if (index < 0)
+        return VaultCoreStatus.notFound;
+
+    ubyte[] nextPayload;
+    replacement.withBytes((scope const(ubyte)[] bytes) @safe
+    {
+        nextPayload = buildPayload(
+            plaintext,
+            records,
+            index,
+            bytes,
+            false,
+            id
+        );
+    });
+    if (nextPayload is null)
+        return VaultCoreStatus.tooLarge;
+    scope(exit) zero(nextPayload);
+
+    ubyte[] nextCipher;
+    status = encryptPayloadUnlocked(
+        session,
+        ns,
+        header.vaultId,
+        nextPayload,
+        header.payloadNonce,
+        nextCipher
+    );
+    if (status != VaultCoreStatus.ok)
+        return status;
+
+    auto nextImage = serializeImage(ns, header, nextCipher);
+    if (nextImage is null)
+        return VaultCoreStatus.backendFailure;
+
+    image = nextImage;
+    return VaultCoreStatus.ok;
+}
+
+VaultCoreStatus vaultRemoveUnlocked(
+    ref ubyte[] image,
+    CredentialNamespace ns,
+    VaultSession session,
+    string locator
+) @safe
+{
+    ubyte[16] id;
+    if (!parseLocator(locator, id))
+        return VaultCoreStatus.invalidInput;
+
+    HeaderView header;
+    ubyte[] plaintext;
+    RecordView[] records;
+    scope(exit)
+    {
+        if (plaintext !is null)
+            zero(plaintext);
+    }
+
+    auto status = openPayloadUnlocked(
+        image,
+        ns,
+        session,
+        header,
+        plaintext,
+        records
+    );
+    if (status != VaultCoreStatus.ok)
+        return status;
+
+    const index = findRecord(records, id);
+    if (index < 0)
+        return VaultCoreStatus.notFound;
+
+    size_t total = payloadMagic.length + 4;
+    foreach (i, ref const record; records)
+    {
+        if (i == cast(size_t)index)
+            continue;
+
+        const add = 16 + 4 + record.secretLength;
+        if (add > maxPayloadBytes - total)
+            return VaultCoreStatus.corruptData;
+        total += add;
+    }
+
+    auto nextPayload = new ubyte[total];
+    scope(exit) zero(nextPayload);
+    Writer w = Writer(nextPayload, 0);
+    assert(w.put(payloadMagic[]));
+    assert(w.putU32(cast(uint)(records.length - 1)));
+
+    foreach (i, ref const record; records)
+    {
+        if (i == cast(size_t)index)
+            continue;
+
+        if (record.secretOffset > plaintext.length ||
+            record.secretLength > plaintext.length - record.secretOffset)
+            return VaultCoreStatus.corruptData;
+
+        assert(w.put(record.id[]));
+        assert(w.putU32(cast(uint)record.secretLength));
+        assert(w.put(plaintext[
+            record.secretOffset ..
+            record.secretOffset + record.secretLength
+        ]));
+    }
+
+    ubyte[] nextCipher;
+    status = encryptPayloadUnlocked(
+        session,
+        ns,
+        header.vaultId,
+        nextPayload,
+        header.payloadNonce,
+        nextCipher
+    );
+    if (status != VaultCoreStatus.ok)
+        return status;
+
+    auto nextImage = serializeImage(ns, header, nextCipher);
+    if (nextImage is null)
+        return VaultCoreStatus.backendFailure;
+
+    image = nextImage;
+    return VaultCoreStatus.ok;
+}
+
+private:
 
 public:
 
