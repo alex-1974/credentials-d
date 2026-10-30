@@ -51,6 +51,11 @@ That PIN is only for credential creation; the subsequent user-presence
 hmac-secret derivations remain PIN-less and must return an assertion without
 the UV flag.
 
+YubiKeys with firmware before 5.3.0 also require a UserEntity name even though
+CTAP makes it optional in this privacy-preserving UP-only case. The library
+uses the constant non-personal value `credentials-d`; the random user id
+remains the credential-specific identifier.
+
 The run proves:
 
 - non-resident hmac-secret credential enrollment;

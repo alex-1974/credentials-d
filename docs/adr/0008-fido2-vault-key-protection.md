@@ -133,8 +133,15 @@ A PIN supplied for this CTAP2.0 MakeCredential compatibility case authorizes
 credential creation only. It does not change the persisted policy and is not
 used for later hmac-secret derivation.
 
+YubiKeys with firmware before 5.3.0 have another documented interoperability
+quirk: although CTAP permits omitting the user name for a user-presence-only
+credential, those devices require a UserEntity name during MakeCredential.
+credentials-d therefore sends the fixed non-identifying name
+`credentials-d` together with the random user id. It does not encode an
+application profile, account name, email address, or other user identity.
+
 This keeps the hmac-secret derivation consistently in the non-UV branch while
-remaining compatible with older PIN-protected CTAP2 authenticators.
+remaining compatible with older CTAP2 authenticators.
 
 ### userVerificationRequired
 
