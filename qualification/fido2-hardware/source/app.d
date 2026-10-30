@@ -63,7 +63,7 @@ private CredentialNamespace namespaceOf(string value)
     return ns;
 }
 
-private void enforce(bool condition, string message) @safe
+private void enforce(bool condition, string message) @trusted
 {
     if (!condition)
     {
@@ -76,7 +76,7 @@ private void enforceStatus(
     CredentialStatus actual,
     CredentialStatus expected,
     string operation
-) @safe
+) @trusted
 {
     if (actual != expected)
     {
