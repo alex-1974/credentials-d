@@ -7,7 +7,6 @@ module credentials.backend.secret_service.ffi;
 
 version (linux):
 
-import core.stdc.stddef : ptrdiff_t;
 
 alias gboolean = int;
 alias gint = int;
