@@ -234,28 +234,34 @@ CredentialStatus createVaultUnlockEnvelope(
     );
 
     ubyte[wrappedVaultKeyBytes] wrapped;
-    CredentialStatus sourceStatus = CredentialStatus.backendFailure;
-    bool visitorCalled;
+    CredentialStatus cryptoStatus = CredentialStatus.backendFailure;
+    size_t visitorCalls;
 
-    sourceStatus = keySource(
+    const sourceStatus = keySource(
         salt,
         (scope const(ubyte)[] wrappingKey) @safe
         {
-            visitorCalled = true;
+            ++visitorCalls;
+
+            if (visitorCalls != 1)
+            {
+                cryptoStatus = CredentialStatus.backendFailure;
+                return;
+            }
 
             if (wrappingKey.length != vaultKeyBytes)
             {
-                sourceStatus = CredentialStatus.invalidInput;
+                cryptoStatus = CredentialStatus.invalidInput;
                 return;
             }
 
             if (!sodiumReady())
             {
-                sourceStatus = CredentialStatus.unavailable;
+                cryptoStatus = CredentialStatus.unavailable;
                 return;
             }
 
-            sourceStatus = encryptVaultKey(
+            cryptoStatus = encryptVaultKey(
                 vaultKey,
                 ad,
                 nonce,
@@ -270,8 +276,11 @@ CredentialStatus createVaultUnlockEnvelope(
     if (sourceStatus != CredentialStatus.ok)
         return sourceStatus;
 
-    if (!visitorCalled)
+    if (visitorCalls != 1)
         return CredentialStatus.backendFailure;
+
+    if (cryptoStatus != CredentialStatus.ok)
+        return cryptoStatus;
 
     envelope.kind_ = protectorKind;
     envelope.binding_ = bindingCopy;
@@ -318,28 +327,34 @@ CredentialStatus recoverVaultKeyFromEnvelope(
     ubyte[vaultKeyBytes] vaultKey;
     scope(exit) zeroFixed(vaultKey);
 
-    CredentialStatus sourceStatus = CredentialStatus.backendFailure;
-    bool visitorCalled;
+    CredentialStatus cryptoStatus = CredentialStatus.backendFailure;
+    size_t visitorCalls;
 
-    sourceStatus = keySource(
+    const sourceStatus = keySource(
         envelope.salt_,
         (scope const(ubyte)[] wrappingKey) @safe
         {
-            visitorCalled = true;
+            ++visitorCalls;
+
+            if (visitorCalls != 1)
+            {
+                cryptoStatus = CredentialStatus.backendFailure;
+                return;
+            }
 
             if (wrappingKey.length != vaultKeyBytes)
             {
-                sourceStatus = CredentialStatus.invalidInput;
+                cryptoStatus = CredentialStatus.invalidInput;
                 return;
             }
 
             if (!sodiumReady())
             {
-                sourceStatus = CredentialStatus.unavailable;
+                cryptoStatus = CredentialStatus.unavailable;
                 return;
             }
 
-            sourceStatus = decryptVaultKey(
+            cryptoStatus = decryptVaultKey(
                 envelope.wrappedKey_,
                 ad,
                 envelope.nonce_,
@@ -354,8 +369,11 @@ CredentialStatus recoverVaultKeyFromEnvelope(
     if (sourceStatus != CredentialStatus.ok)
         return sourceStatus;
 
-    if (!visitorCalled)
+    if (visitorCalls != 1)
         return CredentialStatus.backendFailure;
+
+    if (cryptoStatus != CredentialStatus.ok)
+        return cryptoStatus;
 
     return consumer(vaultKey[]);
 }
