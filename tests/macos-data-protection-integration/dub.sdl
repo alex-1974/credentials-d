@@ -1,0 +1,8 @@
+name "credentials-d-macos-data-protection-integration"
+description "macOS Data Protection Keychain integration qualification"
+license "MIT"
+
+targetType "executable"
+sourcePaths "source"
+
+dependency "credentials-d:macos-data-protection" path="../.."

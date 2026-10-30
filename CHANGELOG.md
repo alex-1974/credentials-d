@@ -18,3 +18,4 @@ All notable changes to this project will be documented here.
 - Add qualified OS-CSPRNG record locators for Linux, Windows and macOS.
 - Add an explicit Windows Credential Manager backend subpackage with native integration tests.
 - Add an explicit Linux Secret Service/libsecret backend with binary-secret and unavailable-service integration tests.
+- Add an explicit macOS Data Protection Keychain backend with fail-closed entitlement qualification and a signed-consumer release requirement.
