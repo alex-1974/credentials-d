@@ -398,12 +398,16 @@ private CredentialStatus bindingFromEnvelope(
 {
     binding = Fido2VaultBinding.init;
 
-    if (!envelope.valid ||
-        envelope.protectorKind != fido2ProtectorKind)
+    if (!envelope.valid)
         return CredentialStatus.invalidInput;
 
+    const protectorKind = envelope.protectorKind;
+    if (protectorKind != fido2ProtectorKind)
+        return CredentialStatus.invalidInput;
+
+    const protectorBinding = envelope.protectorBinding;
     if (!Fido2VaultBinding.tryParse(
-        envelope.protectorBinding,
+        protectorBinding,
         binding
     ))
         return CredentialStatus.corruptData;
