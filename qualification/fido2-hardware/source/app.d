@@ -37,6 +37,7 @@ import std.path : buildPath;
 import std.stdio :
     stdin,
     stderr,
+    stdout,
     writeln;
 
 private enum string defaultRpId =
@@ -526,6 +527,11 @@ void main(string[] args)
         stderr.flush();
         pin = readPin();
 
+        stderr.writeln(
+            "ACTION_REQUIRED=Touch the authenticator when it starts blinking."
+        );
+        stderr.flush();
+
         enrollmentStatus = enroll(
             options,
             selectedDeviceA,
@@ -737,6 +743,11 @@ void main(string[] args)
         );
         stderr.flush();
         pin = readPin();
+
+        stderr.writeln(
+            "ACTION_REQUIRED=Touch the authenticator when it starts blinking."
+        );
+        stderr.flush();
 
         envelopeAStatus = addEnvelope(
             options,
