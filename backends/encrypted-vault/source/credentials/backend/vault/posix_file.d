@@ -93,7 +93,7 @@ struct VaultFileLock
         fd_ = -1;
     }
 
-    ~this() @nogc nothrow @trusted
+    ~this() scope @nogc nothrow @trusted
     {
         release();
     }
