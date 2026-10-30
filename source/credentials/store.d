@@ -4,23 +4,31 @@
 module credentials.store;
 
 import credentials.handle : CredentialHandle;
+import credentials.namespace : CredentialNamespace;
 import credentials.secret : SecretBuffer;
 
 /**
  * Normal operation outcomes.
  *
- * Status values are non-secret and may be used in diagnostics. Backends should
- * reserve exceptions for programmer errors or exceptional runtime failures
- * that cannot be represented by this contract.
+ * Status values are non-secret and safe to report in ordinary diagnostics.
+ * Backends should reserve exceptions for programmer errors or exceptional
+ * runtime failures that cannot be represented by this contract.
  */
 enum CredentialStatus
 {
     ok,
     notFound,
     locked,
+    interactionRequired,
+    userCancelled,
+    unavailable,
+    permissionDenied,
     unsupported,
+    tooLarge,
+    ambiguous,
+    corruptData,
     invalidInput,
-    backendError
+    backendFailure
 }
 
 /**
@@ -29,24 +37,66 @@ enum CredentialStatus
 enum StoreConcurrency
 {
     threadConfined,
+    serialized,
     threadSafe
+}
+
+/**
+ * How credentials are protected at rest by this backend.
+ */
+enum StoreProtection
+{
+    memoryOnly,
+    nativeUserCredentialStore,
+    applicationEncryptedVault
+}
+
+/**
+ * How access to stored credentials is unlocked.
+ */
+enum StoreUnlockModel
+{
+    none,
+    osManaged,
+    applicationManaged
+}
+
+/**
+ * Expected mobility of stored credentials.
+ */
+enum StoreMobility
+{
+    processOnly,
+    localDevice,
+    mayRoam,
+    synchronizable
+}
+
+/**
+ * Whether normal operations may block or require user interaction.
+ */
+enum StoreBlocking
+{
+    nonBlocking,
+    mayBlock,
+    mayPrompt
 }
 
 /**
  * Material security and behavior properties of one store backend.
  *
- * A false capability is not a failure; consumers use this structure to avoid
- * assuming protection that the backend does not provide.
+ * Capabilities describe properties that the backend actually provides. They
+ * must not be inferred from platform name or silently upgraded by fallback.
  */
 struct StoreCapabilities
 {
     bool persistent;
-    bool supportsLocking;
-    bool applicationControlledUnlock;
-    bool userPresence;
-    bool hardwareBacked;
-    bool nativeOsStore;
+    StoreProtection protection;
+    StoreUnlockModel unlockModel;
+    bool supportsUserPresence;
+    StoreMobility mobility;
     bool confirmsLogicalDeletion;
+    StoreBlocking blocking;
     StoreConcurrency concurrency;
 }
 
@@ -63,11 +113,25 @@ alias SecretVisitor = void delegate(scope const(ubyte)[] bytes) @safe;
  * Implementations own record persistence and must honor the security contract
  * in `docs/security/THREAT_MODEL.md`.
  *
+ * A store is always bound to one validated application namespace. Handles from
+ * a different namespace or store instance must never resolve to a credential
+ * by accident.
+ *
  * The common interface does not promise thread safety. Callers must inspect
  * `capabilities.concurrency`.
+ *
+ * credentials-d does not define a fallback chain. If the selected backend is
+ * unavailable, the operation reports that condition instead of silently
+ * persisting plaintext or switching to a weaker store.
  */
 interface CredentialStore
 {
+    /**
+     * Non-secret application namespace owned by this store.
+     */
+    @property CredentialNamespace credentialNamespace() const
+        @nogc nothrow @safe;
+
     /**
      * Describe backend properties without acquiring a secret.
      */
@@ -76,12 +140,13 @@ interface CredentialStore
     /**
      * Persist a new credential and return its non-secret handle.
      *
-     * The backend copies only the plaintext bytes required for persistence and
-     * must not retain the `SecretBuffer` object itself.
-     *
+     * The backend must not retain a reference to `secret` beyond the call.
      * On failure, `handle` is invalid.
      */
-    CredentialStatus store(scope SecretBuffer secret, out CredentialHandle handle) @safe;
+    CredentialStatus store(
+        scope ref const SecretBuffer secret,
+        out CredentialHandle handle
+    ) @safe;
 
     /**
      * Acquire plaintext explicitly for the duration of `visitor`.
@@ -101,7 +166,7 @@ interface CredentialStore
      */
     CredentialStatus replace(
         CredentialHandle handle,
-        scope SecretBuffer replacement
+        scope ref const SecretBuffer replacement
     ) @safe;
 
     /**
