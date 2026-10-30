@@ -994,6 +994,77 @@ VaultCoreStatus validateVaultImageHeader(
     return parseHeader(image, ns, header);
 }
 
+/**
+ * Read the non-secret vault identifier after structural validation.
+ */
+VaultCoreStatus vaultIdFromImage(
+    scope const(ubyte)[] image,
+    CredentialNamespace ns,
+    out ubyte[16] vaultId
+) @safe
+{
+    vaultId[] = 0;
+
+    HeaderView header;
+    const status = parseHeader(image, ns, header);
+    if (status != VaultCoreStatus.ok)
+        return status;
+
+    vaultId[] = header.vaultId[];
+    return VaultCoreStatus.ok;
+}
+
+/**
+ * Unlock a session from an already recovered 256-bit vault key.
+ *
+ * The candidate key is not trusted merely because an external protector
+ * returned it. The authenticated vault payload must decrypt and parse before
+ * the session is populated.
+ */
+VaultCoreStatus unlockVaultSessionWithKey(
+    scope const(ubyte)[] image,
+    CredentialNamespace ns,
+    scope const(ubyte)[] vaultKey,
+    VaultSession session
+) @safe
+{
+    if (session is null || vaultKey.length != vaultKeyBytes)
+        return VaultCoreStatus.invalidInput;
+
+    if (!sodiumReady())
+        return VaultCoreStatus.unavailable;
+
+    HeaderView header;
+    auto status = parseHeader(image, ns, header);
+    if (status != VaultCoreStatus.ok)
+        return status;
+
+    ubyte[] plaintext;
+    scope(exit)
+    {
+        if (plaintext !is null)
+            zero(plaintext);
+    }
+
+    status = decryptPayload(
+        image,
+        header,
+        ns,
+        vaultKey,
+        plaintext
+    );
+    if (status != VaultCoreStatus.ok)
+        return status;
+
+    RecordView[] records;
+    status = parsePayload(plaintext, records);
+    if (status != VaultCoreStatus.ok)
+        return status;
+
+    session.set(vaultKey, header.vaultId);
+    return VaultCoreStatus.ok;
+}
+
 VaultCoreStatus unlockVaultSession(
     scope const(ubyte)[] image,
     CredentialNamespace ns,
