@@ -22,7 +22,7 @@ enum CFStringEncoding kCFStringEncodingUTF8 = 0x08000100;
 
 struct CFDictionaryKeyCallBacks
 {
-    CFIndex version;
+    CFIndex version_;
     void* retain;
     void* release;
     void* copyDescription;
@@ -32,7 +32,7 @@ struct CFDictionaryKeyCallBacks
 
 struct CFDictionaryValueCallBacks
 {
-    CFIndex version;
+    CFIndex version_;
     void* retain;
     void* release;
     void* copyDescription;
