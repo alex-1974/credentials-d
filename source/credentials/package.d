@@ -5,13 +5,18 @@ module credentials;
 
 public import credentials.handle : CredentialHandle;
 public import credentials.memory_store : MemoryCredentialStore;
+public import credentials.namespace : CredentialNamespace;
 public import credentials.secret : SecretBuffer;
 public import credentials.store :
     CredentialStatus,
     CredentialStore,
     SecretVisitor,
+    StoreBlocking,
     StoreCapabilities,
-    StoreConcurrency;
+    StoreConcurrency,
+    StoreMobility,
+    StoreProtection,
+    StoreUnlockModel;
 
 /**
  * Basic credential-store flow using the ephemeral memory backend.
@@ -19,8 +24,13 @@ public import credentials.store :
 @("public package example")
 unittest
 {
-    auto store = new MemoryCredentialStore;
-    auto secret = new SecretBuffer(cast(const(ubyte)[]) "example-token");
+    CredentialNamespace ns;
+    assert(CredentialNamespace.tryParse("org.example.credentials", ns));
+
+    auto store = new MemoryCredentialStore(ns);
+    scope(exit) store.clearAll();
+
+    auto secret = SecretBuffer(cast(const(ubyte)[]) "example-token");
 
     CredentialHandle handle;
     assert(store.store(secret, handle) == CredentialStatus.ok);
