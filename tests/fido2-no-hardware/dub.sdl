@@ -1,0 +1,8 @@
+name "credentials-d-fido2-no-hardware"
+description "libfido2 ABI and discovery qualification without requiring hardware"
+license "MIT"
+
+targetType "executable"
+sourcePaths "source"
+
+dependency "credentials-d:fido2-vault" path="../.."
