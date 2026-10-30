@@ -1,0 +1,11 @@
+name "encrypted-vault"
+description "Encrypted credential vault backend for credentials-d"
+targetType "library"
+
+sourcePaths "source"
+
+dependency "credentials-d" path="../.."
+
+libs "sodium"
+
+toolchainRequirements frontend=">=2.111.0"
