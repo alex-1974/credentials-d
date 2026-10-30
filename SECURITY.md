@@ -2,6 +2,9 @@
 
 `credentials-d` is security-sensitive software.
 
+The normative security boundary and explicit non-goals are defined in
+[`docs/security/THREAT_MODEL.md`](docs/security/THREAT_MODEL.md).
+
 ## Reporting a vulnerability
 
 Do not open a public issue for a previously undisclosed vulnerability that
