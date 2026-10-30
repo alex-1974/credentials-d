@@ -169,7 +169,7 @@ documented. They do not weaken this baseline.
 - `SecretBuffer` copy attempts fail to compile;
 - implicit conversion to `string` fails to compile;
 - plaintext view escape fails under DIP1000;
-- formatting remains redacted;
+- common formatting attempts fail to compile;
 - volatile zeroization is unit-tested;
 - cross-store handles fail closed;
 - forced `unavailable` does not produce a handle;
