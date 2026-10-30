@@ -120,17 +120,28 @@ Two policies exist:
 ### userPresence
 
 - assertion explicitly requires user presence;
-- assertion explicitly requests no UV;
-- no PIN overload is allowed.
+- the CTAP `uv` option is omitted rather than sending `uv=false`, because
+  authenticators that do not advertise built-in UV must not receive that
+  option;
+- after GetAssertion, the returned authenticator-data flags are checked and an
+  unexpected UV bit is rejected;
+- some PIN-protected CTAP2.0 authenticators may require PIN authorization for
+  MakeCredential even though later hmac-secret assertions remain
+  user-presence-only.
 
-This keeps the hmac-secret derivation consistently in the non-UV branch.
+A PIN supplied for this CTAP2.0 MakeCredential compatibility case authorizes
+credential creation only. It does not change the persisted policy and is not
+used for later hmac-secret derivation.
+
+This keeps the hmac-secret derivation consistently in the non-UV branch while
+remaining compatible with older PIN-protected CTAP2 authenticators.
 
 ### userVerificationRequired
 
 - enrollment requests UV;
 - enrollment requests `credProtect=UV_REQUIRED`;
 - assertion requests both user presence and UV;
-- an optional PIN may be supplied through `SecretBuffer`.
+- a PIN may be supplied through `SecretBuffer`.
 
 If the authenticator cannot satisfy the requested UV/credProtect policy,
 enrollment fails. The implementation does not silently downgrade to touch-only.
@@ -156,6 +167,11 @@ The library cannot erase copies created before the PIN entered
 `SecretBuffer`.
 
 PINs are never persisted in a FIDO2 binding or unlock envelope.
+
+For PIN-protected CTAP2.0 authenticators, `interactionRequired` from an
+initial userPresence enrollment is an explicit signal that the caller may
+retry MakeCredential through the PIN overload while retaining the
+userPresence policy.
 
 ## External vault unlock envelope
 
