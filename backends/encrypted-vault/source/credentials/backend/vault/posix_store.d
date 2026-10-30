@@ -412,7 +412,7 @@ final class EncryptedVaultCredentialStore : CredentialStore
         }
     }
 
-    ~this() @safe
+    ~this() scope @safe
     {
         invalidateSession();
     }
@@ -428,7 +428,7 @@ final class EncryptedVaultCredentialStore : CredentialStore
             ":";
     }
 
-    private void invalidateSession() @safe
+    private void invalidateSession() scope @safe
     {
         if (session_ !is null)
             session_.clear();
