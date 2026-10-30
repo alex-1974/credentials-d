@@ -15,9 +15,16 @@ import credentials :
     CredentialHandle,
     CredentialNamespace,
     CredentialStatus,
-    SecretBuffer;
+    SecretBuffer,
+    SecretVisitor;
 import credentials.backend.vault :
-    EncryptedVaultCredentialStore;
+    EncryptedVaultCredentialStore,
+    VaultUnlockEnvelope,
+    VaultWrappingKeySource,
+    createVaultUnlockEnvelopeForStore,
+    unlockVaultWithEnvelope;
+import credentials.backend.vault.protector :
+    protectorSaltBytes;
 import std.conv : to;
 import std.file :
     copy,
@@ -161,6 +168,126 @@ void main()
                 cast(const(ubyte)[]) "replacement");
         }
     ) == CredentialStatus.ok);
+
+    // External protector envelopes wrap the same random vault key without
+    // changing the vault image. Multiple wrappers can coexist and the normal
+    // passphrase remains a recovery path.
+    ubyte[32] wrappingKeyA;
+    ubyte[32] wrappingKeyB;
+    wrappingKeyA[] = 0x11;
+    wrappingKeyB[] = 0x22;
+
+    VaultWrappingKeySource sourceA =
+        (scope const ubyte[protectorSaltBytes] salt,
+         scope SecretVisitor visitor) @safe
+        {
+            assert(salt.length == protectorSaltBytes);
+            visitor(wrappingKeyA[]);
+            return CredentialStatus.ok;
+        };
+
+    VaultWrappingKeySource sourceB =
+        (scope const ubyte[protectorSaltBytes] salt,
+         scope SecretVisitor visitor) @safe
+        {
+            assert(salt.length == protectorSaltBytes);
+            visitor(wrappingKeyB[]);
+            return CredentialStatus.ok;
+        };
+
+    VaultUnlockEnvelope envelopeA;
+    VaultUnlockEnvelope envelopeB;
+
+    assert(createVaultUnlockEnvelopeForStore(
+        reopened,
+        "test-protector",
+        cast(const(ubyte)[]) "binding-a",
+        sourceA,
+        envelopeA
+    ) == CredentialStatus.ok);
+
+    assert(createVaultUnlockEnvelopeForStore(
+        reopened,
+        "test-protector",
+        cast(const(ubyte)[]) "binding-b",
+        sourceB,
+        envelopeB
+    ) == CredentialStatus.ok);
+
+    const serializedA = envelopeA.serialize();
+    VaultUnlockEnvelope parsedA;
+    assert(VaultUnlockEnvelope.tryParse(
+        serializedA,
+        parsedA
+    ));
+
+    reopened.lock();
+    assert(reopened.isLocked);
+
+    assert(unlockVaultWithEnvelope(
+        reopened,
+        parsedA,
+        sourceA
+    ) == CredentialStatus.ok);
+    assert(!reopened.isLocked);
+
+    assert(reopened.acquire(
+        handle,
+        (scope const(ubyte)[] bytes) @safe
+        {
+            assert(bytes ==
+                cast(const(ubyte)[]) "replacement");
+        }
+    ) == CredentialStatus.ok);
+
+    reopened.lock();
+    assert(unlockVaultWithEnvelope(
+        reopened,
+        envelopeB,
+        sourceB
+    ) == CredentialStatus.ok);
+
+    // Wrong protector output fails at the envelope AEAD and never unlocks.
+    reopened.lock();
+
+    VaultWrappingKeySource wrongSource =
+        (scope const ubyte[protectorSaltBytes],
+         scope SecretVisitor visitor) @safe
+        {
+            ubyte[32] wrongKey;
+            wrongKey[] = 0x33;
+            visitor(wrongKey[]);
+            return CredentialStatus.ok;
+        };
+
+    assert(unlockVaultWithEnvelope(
+        reopened,
+        envelopeA,
+        wrongSource
+    ) == CredentialStatus.permissionDenied);
+    assert(reopened.isLocked);
+
+    // Protector binding bytes are authenticated associated data.
+    auto tamperedEnvelopeBytes = serializedA.dup;
+    tamperedEnvelopeBytes[$ - 1] ^= 0x01;
+
+    VaultUnlockEnvelope tamperedEnvelope;
+    assert(VaultUnlockEnvelope.tryParse(
+        tamperedEnvelopeBytes,
+        tamperedEnvelope
+    ));
+
+    assert(unlockVaultWithEnvelope(
+        reopened,
+        tamperedEnvelope,
+        sourceA
+    ) == CredentialStatus.permissionDenied);
+    assert(reopened.isLocked);
+
+    // Existing passphrase recovery remains available after hardware-wrapper
+    // failures.
+    assert(reopened.unlock(passphrase) ==
+        CredentialStatus.ok);
 
     // Wrong namespace is rejected without password work.
     EncryptedVaultCredentialStore wrongNamespace;
