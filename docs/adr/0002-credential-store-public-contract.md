@@ -1,7 +1,13 @@
 # ADR 0002 — CredentialStore and Secret public contracts
 
-**Status:** Accepted for Issue #2 implementation  
+**Status:** Accepted historically; SecretBuffer and capability details superseded by ADR 0003  
 **Date:** 2026-10-30
+
+> **Update:** ADR 0003 replaces the GC-backed `SecretBuffer` representation,
+> store input signatures, namespace semantics, status taxonomy and capability
+> model established during this initial API qualification. The separation of
+> handles, explicit plaintext acquisition, store boundary, replacement and
+> deletion semantics remains in force.
 
 ## Context
 

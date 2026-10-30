@@ -10,8 +10,8 @@ module credentials.handle;
  * intended to be safe to persist in ordinary application settings.
  *
  * The serialized form is opaque to consumers. Consumers may persist it and
- * later reconstruct a handle with `tryParse`, but must not infer backend or
- * identity semantics from its contents.
+ * later reconstruct a handle with `tryParse`, but must not infer backend,
+ * namespace, identity or authorization semantics from its contents.
  */
 struct CredentialHandle
 {
@@ -36,15 +36,15 @@ struct CredentialHandle
     /**
      * Parse a serialized handle previously returned by credentials-d.
      *
-     * The bootstrap contract accepts a deliberately narrow ASCII grammar to
-     * keep handles single-line and suitable for ordinary configuration stores.
+     * The grammar is deliberately narrow and bounded to keep handles
+     * single-line and suitable for ordinary configuration stores.
      */
     static bool tryParse(string text, out CredentialHandle handle)
         @nogc nothrow pure @safe
     {
         handle = CredentialHandle.init;
 
-        if (text.length == 0 || text.length > 128)
+        if (text.length == 0 || text.length > 256)
             return false;
 
         foreach (char c; text)
@@ -63,6 +63,9 @@ struct CredentialHandle
         return true;
     }
 
+    /**
+     * Construct a trusted handle from a backend-controlled serialized value.
+     */
     package(credentials) static CredentialHandle trusted(string text)
         @nogc nothrow pure @safe
     {
@@ -70,12 +73,26 @@ struct CredentialHandle
         handle.value_ = text;
         return handle;
     }
+
+    /**
+     * Whether this handle belongs to the backend-controlled store prefix.
+     *
+     * This helper is package-private so consumers cannot use handle internals
+     * as application identity or authorization data.
+     */
+    package(credentials) bool hasStorePrefix(string prefix) const
+        @nogc nothrow pure @safe
+    {
+        return value_.length > prefix.length &&
+            value_[0 .. prefix.length] == prefix;
+    }
 }
 
 @("CredentialHandle round-trips through ordinary text")
 unittest
 {
-    CredentialHandle original = CredentialHandle.trusted("memory:0000000000000001");
+    CredentialHandle original =
+        CredentialHandle.trusted("cred1:org.example.app:memory:0001:0001");
 
     CredentialHandle parsed;
     assert(CredentialHandle.tryParse(original.serialize(), parsed));

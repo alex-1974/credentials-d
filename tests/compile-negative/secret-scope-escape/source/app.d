@@ -6,7 +6,7 @@ const(ubyte)[] escaped;
 
 void main()
 {
-    auto secret = new SecretBuffer(cast(const(ubyte)[]) "secret");
+    auto secret = SecretBuffer(cast(const(ubyte)[]) "secret");
 
     secret.withBytes((scope const(ubyte)[] bytes) @safe
     {
