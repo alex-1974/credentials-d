@@ -15,6 +15,7 @@ import credentials :
 import credentials.backend.macos :
     MacOSDataProtectionCredentialStore;
 import std.stdio : writeln;
+import std.process : environment;
 
 private CredentialNamespace namespaceOf(string value)
 {
@@ -48,10 +49,28 @@ void main()
     const stored = store.store(first, handle);
     writeln("macOS DPK initial store status code: ", cast(int) stored);
 
-    // GitHub-hosted macOS runners are not provisioned with the application's
-    // production keychain-access entitlement. In that execution context the
-    // security property under test is fail-closed behavior with no legacy
-    // keychain fallback.
+    // A generic command-line executable is not a production-qualified DPK
+    // host. Apple requires an app-like signing/provisioning context for the
+    // restricted keychain entitlements. Hosted CI explicitly marks that
+    // context below. Different toolchains may be rejected at different points
+    // by Security.framework; all accepted outcomes must still be fail-closed.
+    const hostedUnprovisioned =
+        environment.get("CREDENTIALS_D_MACOS_UNPROVISIONED_CI", "") == "1";
+
+    if (hostedUnprovisioned &&
+        (stored == CredentialStatus.permissionDenied ||
+         stored == CredentialStatus.unavailable ||
+         stored == CredentialStatus.invalidInput))
+    {
+        assert(!handle.valid);
+        writeln(
+            "macOS DPK qualification: fail-closed in explicitly unprovisioned CLI host"
+        );
+        return;
+    }
+
+    // Outside the explicitly marked hosted-CI context, errSecParam /
+    // invalidInput is never accepted as an entitlement substitute.
     if (stored == CredentialStatus.permissionDenied ||
         stored == CredentialStatus.unavailable)
     {
