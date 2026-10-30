@@ -99,6 +99,14 @@ jobs:
             false
           fi
 
+          if dub build \
+              --root=tests/compile-negative/secret-format \
+              --compiler="$DC" \
+              --force; then
+            echo "Expected SecretBuffer formatting to fail."
+            false
+          fi
+
       - name: Documentation build
         if: startsWith(matrix.compiler, 'dmd-')
         shell: bash
