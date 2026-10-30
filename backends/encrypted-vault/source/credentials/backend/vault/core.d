@@ -53,14 +53,15 @@ struct HeaderView
     ubyte[xNonceBytes] wrapNonce;
     ubyte[vaultKeyBytes + aeadTagBytes] wrappedKey;
     ubyte[xNonceBytes] payloadNonce;
-    const(ubyte)[] namespaceBytes;
-    const(ubyte)[] payloadCipher;
+    size_t payloadCipherOffset;
+    size_t payloadCipherLength;
 }
 
 struct RecordView
 {
     ubyte[16] id;
-    const(ubyte)[] secret;
+    size_t secretOffset;
+    size_t secretLength;
 }
 
 struct Reader
@@ -68,50 +69,164 @@ struct Reader
     const(ubyte)[] data;
     size_t pos;
 
-    bool take(size_t count, out const(ubyte)[] result)
+    bool canRead(size_t count) const scope
+        @nogc nothrow pure @safe
+    {
+        return pos <= data.length && count <= data.length - pos;
+    }
+
+    bool skip(size_t count) scope
         @nogc nothrow @safe
     {
-        result = null;
-        if (pos > data.length || count > data.length - pos)
+        if (!canRead(count))
             return false;
 
-        result = data[pos .. pos + count];
         pos += count;
         return true;
     }
 
-    bool readU16(out ushort value) @nogc nothrow @safe
+    bool expect(scope const(ubyte)[] expected) scope
+        @nogc nothrow @safe
     {
-        const(ubyte)[] b;
-        if (!take(2, b))
+        if (!canRead(expected.length))
             return false;
-        value = cast(ushort)(cast(ushort)b[0] |
-            (cast(ushort)b[1] << 8));
+
+        foreach (i, value; expected)
+            if (data[pos + i] != value)
+                return false;
+
+        pos += expected.length;
         return true;
     }
 
-    bool readU32(out uint value) @nogc nothrow @safe
+    bool readFixed(size_t N)(ref ubyte[N] destination) scope
+        @nogc nothrow @safe
     {
-        const(ubyte)[] b;
-        if (!take(4, b))
+        if (!canRead(N))
             return false;
-        value =
-            cast(uint)b[0] |
-            (cast(uint)b[1] << 8) |
-            (cast(uint)b[2] << 16) |
-            (cast(uint)b[3] << 24);
+
+        foreach (i; 0 .. N)
+            destination[i] = data[pos + i];
+
+        pos += N;
         return true;
     }
 
-    bool readU64(out ulong value) @nogc nothrow @safe
+    bool readNamespace(
+        size_t count,
+        string expected,
+        out bool matches
+    ) scope @nogc nothrow @safe
     {
-        const(ubyte)[] b;
-        if (!take(8, b))
+        matches = false;
+
+        if (!canRead(count))
             return false;
 
+        if (count == 0 || count > 96)
+            return false;
+
+        bool segmentStart = true;
+        bool previousHyphen;
+
+        foreach (i; 0 .. count)
+        {
+            const c = data[pos + i];
+
+            if (c == '.')
+            {
+                if (segmentStart || previousHyphen)
+                    return false;
+                segmentStart = true;
+                previousHyphen = false;
+                continue;
+            }
+
+            const alnum =
+                (c >= 'a' && c <= 'z') ||
+                (c >= '0' && c <= '9');
+
+            if (alnum)
+            {
+                segmentStart = false;
+                previousHyphen = false;
+                continue;
+            }
+
+            if (c == '-')
+            {
+                if (segmentStart)
+                    return false;
+                previousHyphen = true;
+                continue;
+            }
+
+            return false;
+        }
+
+        if (segmentStart || previousHyphen)
+            return false;
+
+        matches = count == expected.length;
+
+        if (matches)
+        {
+            foreach (i, char ch; expected)
+            {
+                if (data[pos + i] != cast(ubyte) ch)
+                {
+                    matches = false;
+                    break;
+                }
+            }
+        }
+
+        pos += count;
+        return true;
+    }
+
+    bool readU16(out ushort value) scope
+        @nogc nothrow @safe
+    {
         value = 0;
+        if (!canRead(2))
+            return false;
+
+        value = cast(ushort)(
+            cast(ushort)data[pos] |
+            (cast(ushort)data[pos + 1] << 8)
+        );
+        pos += 2;
+        return true;
+    }
+
+    bool readU32(out uint value) scope
+        @nogc nothrow @safe
+    {
+        value = 0;
+        if (!canRead(4))
+            return false;
+
+        value =
+            cast(uint)data[pos] |
+            (cast(uint)data[pos + 1] << 8) |
+            (cast(uint)data[pos + 2] << 16) |
+            (cast(uint)data[pos + 3] << 24);
+        pos += 4;
+        return true;
+    }
+
+    bool readU64(out ulong value) scope
+        @nogc nothrow @safe
+    {
+        value = 0;
+        if (!canRead(8))
+            return false;
+
         foreach (i; 0 .. 8)
-            value |= cast(ulong)b[i] << (8 * i);
+            value |= cast(ulong)data[pos + i] << (8 * i);
+
+        pos += 8;
         return true;
     }
 }
@@ -242,8 +357,7 @@ VaultCoreStatus parseHeader(
 
     Reader r = Reader(image, 0);
 
-    const(ubyte)[] magic;
-    if (!r.take(vaultMagic.length, magic) || magic != vaultMagic[])
+    if (!r.expect(vaultMagic[]))
         return VaultCoreStatus.corruptData;
 
     ushort version_;
@@ -264,30 +378,16 @@ VaultCoreStatus parseHeader(
         reserved != 0)
         return VaultCoreStatus.corruptData;
 
+    // Hostile KDF parameters are rejected before any Argon2 invocation.
     if (!validKdf(header.ops, header.memBytes))
         return VaultCoreStatus.corruptData;
 
-    const(ubyte)[] field;
-
-    if (!r.take(header.salt.length, field))
+    if (!r.readFixed(header.salt) ||
+        !r.readFixed(header.vaultId) ||
+        !r.readFixed(header.wrapNonce) ||
+        !r.readFixed(header.wrappedKey) ||
+        !r.readFixed(header.payloadNonce))
         return VaultCoreStatus.corruptData;
-    header.salt[] = field[];
-
-    if (!r.take(header.vaultId.length, field))
-        return VaultCoreStatus.corruptData;
-    header.vaultId[] = field[];
-
-    if (!r.take(header.wrapNonce.length, field))
-        return VaultCoreStatus.corruptData;
-    header.wrapNonce[] = field[];
-
-    if (!r.take(header.wrappedKey.length, field))
-        return VaultCoreStatus.corruptData;
-    header.wrappedKey[] = field[];
-
-    if (!r.take(header.payloadNonce.length, field))
-        return VaultCoreStatus.corruptData;
-    header.payloadNonce[] = field[];
 
     ulong payloadCipherLength;
     if (!r.readU64(payloadCipherLength))
@@ -301,21 +401,21 @@ VaultCoreStatus parseHeader(
         payloadCipherLength > size_t.max)
         return VaultCoreStatus.corruptData;
 
-    if (!r.take(namespaceLength, header.namespaceBytes))
+    bool namespaceMatches;
+    if (!r.readNamespace(
+        namespaceLength,
+        expectedNamespace.serialize(),
+        namespaceMatches
+    ))
         return VaultCoreStatus.corruptData;
 
-    if (!validNamespaceBytes(header.namespaceBytes))
-        return VaultCoreStatus.corruptData;
-
-    const expectedText = expectedNamespace.serialize();
-    if (header.namespaceBytes.length != expectedText.length)
+    if (!namespaceMatches)
         return VaultCoreStatus.invalidInput;
 
-    foreach (i, char ch; expectedText)
-        if (header.namespaceBytes[i] != cast(ubyte) ch)
-            return VaultCoreStatus.invalidInput;
+    header.payloadCipherOffset = r.pos;
+    header.payloadCipherLength = cast(size_t) payloadCipherLength;
 
-    if (!r.take(cast(size_t)payloadCipherLength, header.payloadCipher))
+    if (!r.skip(header.payloadCipherLength))
         return VaultCoreStatus.corruptData;
 
     if (r.pos != image.length)
@@ -473,6 +573,7 @@ VaultCoreStatus unwrapKey(
 }
 
 VaultCoreStatus decryptPayload(
+    scope const(ubyte)[] image,
     ref const HeaderView header,
     CredentialNamespace ns,
     scope const ubyte[vaultKeyBytes] vaultKey,
@@ -481,14 +582,21 @@ VaultCoreStatus decryptPayload(
 {
     plaintext = null;
 
-    if (header.payloadCipher.length < aeadTagBytes)
+    if (header.payloadCipherOffset > image.length ||
+        header.payloadCipherLength > image.length - header.payloadCipherOffset ||
+        header.payloadCipherLength < aeadTagBytes)
         return VaultCoreStatus.corruptData;
 
     const expectedLength =
-        header.payloadCipher.length - aeadTagBytes;
+        header.payloadCipherLength - aeadTagBytes;
 
     if (expectedLength > maxPayloadBytes)
         return VaultCoreStatus.corruptData;
+
+    const cipher = image[
+        header.payloadCipherOffset ..
+        header.payloadCipherOffset + header.payloadCipherLength
+    ];
 
     plaintext = new ubyte[expectedLength];
 
@@ -499,8 +607,8 @@ VaultCoreStatus decryptPayload(
         plaintext.length == 0 ? null : plaintext.ptr,
         &actualLength,
         null,
-        header.payloadCipher.ptr,
-        header.payloadCipher.length,
+        cipher.ptr,
+        cipher.length,
         ad.ptr,
         ad.length,
         header.payloadNonce.ptr,
@@ -566,8 +674,8 @@ VaultCoreStatus parsePayload(
     records = null;
 
     Reader r = Reader(plaintext, 0);
-    const(ubyte)[] magic;
-    if (!r.take(payloadMagic.length, magic) || magic != payloadMagic[])
+
+    if (!r.expect(payloadMagic[]))
         return VaultCoreStatus.corruptData;
 
     uint count;
@@ -578,17 +686,18 @@ VaultCoreStatus parsePayload(
 
     foreach (i; 0 .. count)
     {
-        const(ubyte)[] idBytes;
-        if (!r.take(16, idBytes))
+        if (!r.readFixed(records[i].id))
             return VaultCoreStatus.corruptData;
-        records[i].id[] = idBytes[];
 
         uint secretLength;
         if (!r.readU32(secretLength) ||
             secretLength > maxSecretBytes)
             return VaultCoreStatus.corruptData;
 
-        if (!r.take(secretLength, records[i].secret))
+        records[i].secretOffset = r.pos;
+        records[i].secretLength = secretLength;
+
+        if (!r.skip(secretLength))
             return VaultCoreStatus.corruptData;
 
         foreach (j; 0 .. i)
@@ -623,7 +732,7 @@ bool payloadSizeFor(
         const length =
             cast(ptrdiff_t)i == replacementIndex
             ? replacementLength
-            : record.secret.length;
+            : record.secretLength;
 
         if (length > maxSecretBytes)
             return false;
@@ -650,6 +759,7 @@ bool payloadSizeFor(
 }
 
 ubyte[] buildPayload(
+    scope const(ubyte)[] sourcePayload,
     scope const RecordView[] records,
     ptrdiff_t replacementIndex,
     scope const(ubyte)[] replacement,
@@ -677,10 +787,24 @@ ubyte[] buildPayload(
 
     foreach (i, ref const record; records)
     {
-        const bytes =
-            cast(ptrdiff_t)i == replacementIndex
-            ? replacement
-            : record.secret;
+        const(ubyte)[] bytes;
+
+        if (cast(ptrdiff_t)i == replacementIndex)
+        {
+            bytes = replacement;
+        }
+        else
+        {
+            if (record.secretOffset > sourcePayload.length ||
+                record.secretLength >
+                    sourcePayload.length - record.secretOffset)
+                return null;
+
+            bytes = sourcePayload[
+                record.secretOffset ..
+                record.secretOffset + record.secretLength
+            ];
+        }
 
         assert(w.put(record.id[]));
         assert(w.putU32(cast(uint)bytes.length));
@@ -831,7 +955,7 @@ VaultCoreStatus openPayload(
     if (status != VaultCoreStatus.ok)
         return status;
 
-    status = decryptPayload(header, ns, vaultKey, plaintext);
+    status = decryptPayload(image, header, ns, vaultKey, plaintext);
     if (status != VaultCoreStatus.ok)
         return status;
 
@@ -987,6 +1111,7 @@ VaultCoreStatus vaultPut(
     secret.withBytes((scope const(ubyte)[] bytes) @safe
     {
         nextPayload = buildPayload(
+            plaintext,
             records,
             -1,
             bytes,
@@ -1067,7 +1192,16 @@ VaultCoreStatus vaultAcquire(
     if (index < 0)
         return VaultCoreStatus.notFound;
 
-    visitor(records[cast(size_t)index].secret);
+    const record = records[cast(size_t)index];
+
+    if (record.secretOffset > plaintext.length ||
+        record.secretLength > plaintext.length - record.secretOffset)
+        return VaultCoreStatus.corruptData;
+
+    visitor(plaintext[
+        record.secretOffset ..
+        record.secretOffset + record.secretLength
+    ]);
     return VaultCoreStatus.ok;
 }
 
@@ -1123,6 +1257,7 @@ VaultCoreStatus vaultReplace(
     replacement.withBytes((scope const(ubyte)[] bytes) @safe
     {
         nextPayload = buildPayload(
+            plaintext,
             records,
             index,
             bytes,
@@ -1203,7 +1338,7 @@ VaultCoreStatus vaultRemove(
     {
         if (i == cast(size_t)index)
             continue;
-        const add = 16 + 4 + record.secret.length;
+        const add = 16 + 4 + record.secretLength;
         if (add > maxPayloadBytes - total)
             return VaultCoreStatus.corruptData;
         total += add;
@@ -1219,9 +1354,16 @@ VaultCoreStatus vaultRemove(
     {
         if (i == cast(size_t)index)
             continue;
+        if (record.secretOffset > plaintext.length ||
+            record.secretLength > plaintext.length - record.secretOffset)
+            return VaultCoreStatus.corruptData;
+
         assert(w.put(record.id[]));
-        assert(w.putU32(cast(uint)record.secret.length));
-        assert(w.put(record.secret));
+        assert(w.putU32(cast(uint)record.secretLength));
+        assert(w.put(plaintext[
+            record.secretOffset ..
+            record.secretOffset + record.secretLength
+        ]));
     }
 
     ubyte[] nextCipher;
