@@ -172,6 +172,33 @@ private bool findDevice(
     return false;
 }
 
+private bool selectPrimaryDevice(
+    scope const Fido2DeviceInfo[] devices,
+    string requestedPath,
+    out Fido2DeviceInfo result,
+    out string selectedPath
+) @safe
+{
+    result = Fido2DeviceInfo.init;
+    selectedPath = null;
+
+    if (requestedPath.length == 0 || requestedPath == "auto")
+    {
+        if (devices.length != 1)
+            return false;
+
+        result = devices[0];
+        selectedPath = result.path;
+        return selectedPath.length != 0;
+    }
+
+    if (!findDevice(devices, requestedPath, result))
+        return false;
+
+    selectedPath = result.path;
+    return selectedPath.length != 0;
+}
+
 private bool containsBytes(
     scope const(ubyte)[] haystack,
     scope const(ubyte)[] needle
@@ -435,19 +462,28 @@ void main(string[] args)
         return;
     }
 
-    enforce(options.deviceA.length != 0, "--device-a is required");
     Fido2DeviceInfo deviceAInfo;
+    string selectedDeviceA;
     enforce(
-        findDevice(devices, options.deviceA, deviceAInfo),
-        "device A is not currently discoverable"
+        selectPrimaryDevice(
+            devices,
+            selectedDeviceA,
+            deviceAInfo,
+            selectedDeviceA
+        ),
+        options.deviceA.length == 0 || options.deviceA == "auto"
+            ? "automatic device selection requires exactly one discoverable FIDO2 device"
+            : "device A is not currently discoverable"
     );
+
+    writeln("device_a_path=", selectedDeviceA);
 
     Fido2DeviceInfo deviceBInfo;
     bool hasDeviceB;
     if (options.deviceB.length != 0)
     {
         enforce(
-            options.deviceB != options.deviceA,
+            options.deviceB != selectedDeviceA,
             "device B must be a different runtime device"
         );
         hasDeviceB =
@@ -467,7 +503,7 @@ void main(string[] args)
     Fido2VaultBinding deterministicBinding;
     auto enrollmentStatus = enroll(
         options,
-        options.deviceA,
+        selectedDeviceA,
         pin,
         deterministicBinding
     );
@@ -483,7 +519,7 @@ void main(string[] args)
 
         enrollmentStatus = enroll(
             options,
-            options.deviceA,
+            selectedDeviceA,
             pin,
             deterministicBinding
         );
@@ -506,7 +542,7 @@ void main(string[] args)
     enforce(
         !containsBytes(
             serializedBinding,
-            cast(const(ubyte)[])options.deviceA
+            cast(const(ubyte)[])selectedDeviceA
         ),
         "persisted FIDO2 binding contains the runtime device path"
     );
@@ -541,7 +577,7 @@ void main(string[] args)
     enforceStatus(
         derive(
             options,
-            options.deviceA,
+            selectedDeviceA,
             parsedBinding,
             salt1,
             pin,
@@ -553,7 +589,7 @@ void main(string[] args)
     enforceStatus(
         derive(
             options,
-            options.deviceA,
+            selectedDeviceA,
             parsedBinding,
             salt1,
             pin,
@@ -565,7 +601,7 @@ void main(string[] args)
     enforceStatus(
         derive(
             options,
-            options.deviceA,
+            selectedDeviceA,
             parsedBinding,
             salt2,
             pin,
@@ -596,7 +632,7 @@ void main(string[] args)
 
         const wrongPinStatus = derive(
             options,
-            options.deviceA,
+            selectedDeviceA,
             parsedBinding,
             salt1,
             wrongPin,
@@ -678,7 +714,7 @@ void main(string[] args)
     auto envelopeAStatus = addEnvelope(
         options,
         store,
-        options.deviceA,
+        selectedDeviceA,
         pin,
         envelopeA
     );
@@ -695,7 +731,7 @@ void main(string[] args)
         envelopeAStatus = addEnvelope(
             options,
             store,
-            options.deviceA,
+            selectedDeviceA,
             pin,
             envelopeA
         );
@@ -739,7 +775,7 @@ void main(string[] args)
         unlockEnvelope(
             options,
             reopened,
-            options.deviceA,
+            selectedDeviceA,
             parsedEnvelopeA,
             pin
         ),
@@ -792,7 +828,7 @@ void main(string[] args)
         unlockEnvelope(
             options,
             reopened,
-            options.deviceA,
+            selectedDeviceA,
             tamperedEnvelope,
             pin
         ),
@@ -868,7 +904,7 @@ void main(string[] args)
         reopened.lock();
 
         if (options.confirmRemoveA)
-            waitForRemoval(options.deviceA);
+            waitForRemoval(selectedDeviceA);
 
         enforceStatus(
             unlockEnvelope(
