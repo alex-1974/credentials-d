@@ -63,7 +63,7 @@ private CredentialNamespace namespaceOf(string value)
     return ns;
 }
 
-private void enforce(bool condition, string message)
+private void enforce(bool condition, string message) @safe
 {
     if (!condition)
     {
@@ -76,7 +76,7 @@ private void enforceStatus(
     CredentialStatus actual,
     CredentialStatus expected,
     string operation
-)
+) @safe
 {
     if (actual != expected)
     {
@@ -152,16 +152,24 @@ private Fido2DeviceInfo[] discover()
     return devices;
 }
 
-private const(Fido2DeviceInfo)* findDevice(
+private bool findDevice(
     scope const Fido2DeviceInfo[] devices,
-    string path
-)
+    string path,
+    out Fido2DeviceInfo result
+) @safe
 {
-    foreach (ref const device; devices)
-        if (device.path == path)
-            return &device;
+    result = Fido2DeviceInfo.init;
 
-    return null;
+    foreach (const device; devices)
+    {
+        if (device.path == path)
+        {
+            result = device;
+            return true;
+        }
+    }
+
+    return false;
 }
 
 private bool containsBytes(
@@ -373,6 +381,15 @@ private void printDevice(string label, scope const Fido2DeviceInfo device)
     writeln(label, "_product=", device.product);
 }
 
+private bool findDevicePresent(
+    scope const Fido2DeviceInfo[] devices,
+    string path
+) @safe
+{
+    Fido2DeviceInfo ignored;
+    return findDevice(devices, path, ignored);
+}
+
 private void waitForRemoval(string deviceA)
 {
     writeln(
@@ -382,7 +399,7 @@ private void waitForRemoval(string deviceA)
 
     const devices = discover();
     enforce(
-        findDevice(devices, deviceA) is null,
+        !findDevicePresent(devices, deviceA),
         "security key A is still discoverable after removal confirmation"
     );
 }
@@ -410,24 +427,29 @@ void main(string[] args)
     }
 
     enforce(options.deviceA.length != 0, "--device-a is required");
-    const deviceAInfo = findDevice(devices, options.deviceA);
-    enforce(deviceAInfo !is null, "device A is not currently discoverable");
+    Fido2DeviceInfo deviceAInfo;
+    enforce(
+        findDevice(devices, options.deviceA, deviceAInfo),
+        "device A is not currently discoverable"
+    );
 
-    const Fido2DeviceInfo* deviceBInfo;
+    Fido2DeviceInfo deviceBInfo;
+    bool hasDeviceB;
     if (options.deviceB.length != 0)
     {
         enforce(
             options.deviceB != options.deviceA,
             "device B must be a different runtime device"
         );
-        deviceBInfo = findDevice(devices, options.deviceB);
-        enforce(deviceBInfo !is null, "device B is not currently discoverable");
+        hasDeviceB =
+            findDevice(devices, options.deviceB, deviceBInfo);
+        enforce(hasDeviceB, "device B is not currently discoverable");
     }
 
     writeln("policy=", options.uv ? "uv-required" : "user-presence");
-    printDevice("device_a", *deviceAInfo);
-    if (deviceBInfo !is null)
-        printDevice("device_b", *deviceBInfo);
+    printDevice("device_a", deviceAInfo);
+    if (hasDeviceB)
+        printDevice("device_b", deviceBInfo);
 
     auto pin = options.uv
         ? readPin()
@@ -735,7 +757,7 @@ void main(string[] args)
 
     writeln("tampered_envelope_rejected=PASS");
 
-    if (deviceBInfo !is null)
+    if (hasDeviceB)
     {
         const wrongDeviceStatus = unlockEnvelope(
             options,
@@ -768,7 +790,7 @@ void main(string[] args)
     );
     writeln("passphrase_recovery=PASS");
 
-    if (deviceBInfo !is null)
+    if (hasDeviceB)
     {
         VaultUnlockEnvelope envelopeB;
         enforceStatus(
