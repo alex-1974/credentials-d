@@ -38,9 +38,13 @@ Use a synthetic RP id dedicated to this qualification. The default is
 `credentials-d.local`.
 
 ```bash
-DC=dmd ./run.sh \
-  --device-a /dev/hidrawN
+DC=dmd ./run.sh
 ```
+
+If exactly one FIDO2 authenticator is discoverable, the runner selects it
+automatically. This avoids relying on unstable `/dev/hidrawN` numbering.
+`--device-a /dev/hidrawN` remains available when several devices are
+attached.
 
 The operator will be asked to touch the key multiple times.
 
