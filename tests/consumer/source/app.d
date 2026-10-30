@@ -2,14 +2,20 @@ module app;
 
 import credentials :
     CredentialHandle,
+    CredentialNamespace,
     CredentialStatus,
     MemoryCredentialStore,
     SecretBuffer;
 
 void main()
 {
-    auto store = new MemoryCredentialStore;
-    auto secret = new SecretBuffer(cast(const(ubyte)[]) "consumer-token");
+    CredentialNamespace ns;
+    assert(CredentialNamespace.tryParse("org.example.consumer", ns));
+
+    auto store = new MemoryCredentialStore(ns);
+    scope(exit) store.clearAll();
+
+    auto secret = SecretBuffer(cast(const(ubyte)[]) "consumer-token");
 
     CredentialHandle handle;
     assert(store.store(secret, handle) == CredentialStatus.ok);
