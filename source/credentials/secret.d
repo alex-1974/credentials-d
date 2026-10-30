@@ -130,7 +130,7 @@ struct SecretBuffer
      * intact. It is used by credential backends that retain a derived secret
      * such as an unlocked vault key.
      */
-    package(credentials) void reset(scope const(ubyte)[] source) @trusted
+    package(credentials) void reset(scope const(ubyte)[] source) scope @trusted
     {
         ubyte* next;
         if (source.length != 0)
