@@ -172,7 +172,7 @@ struct VaultUnlockEnvelope
         char[] kindChars = new char[kindBytes.length];
         foreach (i, value; kindBytes)
             kindChars[i] = cast(char)value;
-        envelope.kind_ = cast(string) kindChars;
+        envelope.kind_ = kindChars.idup;
 
         if (cast(size_t)bindingLength > input.length - pos)
             return false;
@@ -256,24 +256,15 @@ CredentialStatus createVaultUnlockEnvelope(
                 return;
             }
 
-            ulong cipherLength;
-            const rc =
-                crypto_aead_xchacha20poly1305_ietf_encrypt(
-                    wrapped.ptr,
-                    &cipherLength,
-                    vaultKey.ptr,
-                    vaultKey.length,
-                    ad.ptr,
-                    ad.length,
-                    null,
-                    nonce.ptr,
-                    wrappingKey.ptr
-                );
-
-            sourceStatus =
-                rc == 0 && cipherLength == wrapped.length
-                    ? CredentialStatus.ok
-                    : CredentialStatus.backendFailure;
+            sourceStatus = encryptVaultKey(
+                vaultKey,
+                ad,
+                nonce,
+                wrappingKey,
+                wrapped
+            )
+                ? CredentialStatus.ok
+                : CredentialStatus.backendFailure;
         }
     );
 
@@ -349,24 +340,15 @@ CredentialStatus recoverVaultKeyFromEnvelope(
                 return;
             }
 
-            ulong plaintextLength;
-            const rc =
-                crypto_aead_xchacha20poly1305_ietf_decrypt(
-                    vaultKey.ptr,
-                    &plaintextLength,
-                    null,
-                    envelope.wrappedKey_.ptr,
-                    envelope.wrappedKey_.length,
-                    ad.ptr,
-                    ad.length,
-                    envelope.nonce_.ptr,
-                    wrappingKey.ptr
-                );
-
-            sourceStatus =
-                rc == 0 && plaintextLength == vaultKey.length
-                    ? CredentialStatus.ok
-                    : CredentialStatus.permissionDenied;
+            sourceStatus = decryptVaultKey(
+                envelope.wrappedKey_,
+                ad,
+                envelope.nonce_,
+                wrappingKey,
+                vaultKey
+            )
+                ? CredentialStatus.ok
+                : CredentialStatus.permissionDenied;
         }
     );
 
@@ -377,6 +359,63 @@ CredentialStatus recoverVaultKeyFromEnvelope(
         return CredentialStatus.backendFailure;
 
     return consumer(vaultKey[]);
+}
+
+private bool encryptVaultKey(
+    scope const(ubyte)[] vaultKey,
+    scope const(ubyte)[] associatedData,
+    scope const ubyte[xNonceBytes] nonce,
+    scope const(ubyte)[] wrappingKey,
+    ref ubyte[wrappedVaultKeyBytes] wrapped
+) @trusted
+{
+    if (vaultKey.length != vaultKeyBytes ||
+        wrappingKey.length != vaultKeyBytes)
+        return false;
+
+    ulong cipherLength;
+
+    const rc = crypto_aead_xchacha20poly1305_ietf_encrypt(
+        wrapped.ptr,
+        &cipherLength,
+        vaultKey.ptr,
+        vaultKey.length,
+        associatedData.length == 0 ? null : associatedData.ptr,
+        associatedData.length,
+        null,
+        nonce.ptr,
+        wrappingKey.ptr
+    );
+
+    return rc == 0 && cipherLength == wrapped.length;
+}
+
+private bool decryptVaultKey(
+    scope const ubyte[wrappedVaultKeyBytes] wrapped,
+    scope const(ubyte)[] associatedData,
+    scope const ubyte[xNonceBytes] nonce,
+    scope const(ubyte)[] wrappingKey,
+    ref ubyte[vaultKeyBytes] vaultKey
+) @trusted
+{
+    if (wrappingKey.length != vaultKeyBytes)
+        return false;
+
+    ulong plaintextLength;
+
+    const rc = crypto_aead_xchacha20poly1305_ietf_decrypt(
+        vaultKey.ptr,
+        &plaintextLength,
+        null,
+        wrapped.ptr,
+        wrapped.length,
+        associatedData.length == 0 ? null : associatedData.ptr,
+        associatedData.length,
+        nonce.ptr,
+        wrappingKey.ptr
+    );
+
+    return rc == 0 && plaintextLength == vaultKey.length;
 }
 
 private ubyte[] buildEnvelopeAd(
