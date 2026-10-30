@@ -10,6 +10,7 @@ import core.sys.posix.sys.stat :
 import core.sys.posix.unistd :
     getpid,
     symlink;
+import core.thread : Thread;
 import credentials :
     CredentialHandle,
     CredentialNamespace,
@@ -268,6 +269,119 @@ void main()
         oversizedStore
     ) == CredentialStatus.corruptData);
     assert(oversizedStore is null);
+
+    // Independently opened store instances must serialize through the stable
+    // sidecar flock. Both writes must survive; otherwise this would expose a
+    // lost-update race despite each instance being internally synchronized.
+    const concurrentPath = buildPath(root, "concurrent.vault");
+
+    EncryptedVaultCredentialStore concurrentSeed;
+    assert(EncryptedVaultCredentialStore.createNew(
+        concurrentPath,
+        ns,
+        passphrase,
+        concurrentSeed
+    ) == CredentialStatus.ok);
+    concurrentSeed.lock();
+
+    EncryptedVaultCredentialStore writerA;
+    EncryptedVaultCredentialStore writerB;
+    assert(EncryptedVaultCredentialStore.openExisting(
+        concurrentPath,
+        ns,
+        writerA
+    ) == CredentialStatus.ok);
+    assert(EncryptedVaultCredentialStore.openExisting(
+        concurrentPath,
+        ns,
+        writerB
+    ) == CredentialStatus.ok);
+    assert(writerA.unlock(passphrase) == CredentialStatus.ok);
+    assert(writerB.unlock(passphrase) == CredentialStatus.ok);
+
+    CredentialHandle concurrentHandleA;
+    CredentialHandle concurrentHandleB;
+    CredentialStatus concurrentStatusA = CredentialStatus.backendFailure;
+    CredentialStatus concurrentStatusB = CredentialStatus.backendFailure;
+
+    auto threadA = new Thread({
+        auto threadSecret =
+            SecretBuffer(cast(const(ubyte)[]) "concurrent-a");
+        concurrentStatusA =
+            writerA.store(threadSecret, concurrentHandleA);
+    });
+
+    auto threadB = new Thread({
+        auto threadSecret =
+            SecretBuffer(cast(const(ubyte)[]) "concurrent-b");
+        concurrentStatusB =
+            writerB.store(threadSecret, concurrentHandleB);
+    });
+
+    threadA.start();
+    threadB.start();
+    threadA.join();
+    threadB.join();
+
+    assert(concurrentStatusA == CredentialStatus.ok);
+    assert(concurrentStatusB == CredentialStatus.ok);
+    assert(concurrentHandleA.valid);
+    assert(concurrentHandleB.valid);
+
+    writerA.lock();
+    writerB.lock();
+
+    EncryptedVaultCredentialStore concurrentCheck;
+    assert(EncryptedVaultCredentialStore.openExisting(
+        concurrentPath,
+        ns,
+        concurrentCheck
+    ) == CredentialStatus.ok);
+    assert(concurrentCheck.unlock(passphrase) == CredentialStatus.ok);
+
+    assert(concurrentCheck.acquire(
+        concurrentHandleA,
+        (scope const(ubyte)[] bytes) @safe
+        {
+            assert(bytes == cast(const(ubyte)[]) "concurrent-a");
+        }
+    ) == CredentialStatus.ok);
+
+    assert(concurrentCheck.acquire(
+        concurrentHandleB,
+        (scope const(ubyte)[] bytes) @safe
+        {
+            assert(bytes == cast(const(ubyte)[]) "concurrent-b");
+        }
+    ) == CredentialStatus.ok);
+
+    // A crash before atomic commit can leave an encrypted same-directory
+    // temporary image. Such residue must never shadow or replace the committed
+    // vault. Copying the committed image models encrypted temp-file contents
+    // without ever creating a plaintext fixture.
+    const residuePath =
+        concurrentPath ~ ".tmp-00000000000000000000000000000000";
+    copy(concurrentPath, residuePath);
+    makeOwnerOnly(residuePath);
+
+    EncryptedVaultCredentialStore residueCheck;
+    assert(EncryptedVaultCredentialStore.openExisting(
+        concurrentPath,
+        ns,
+        residueCheck
+    ) == CredentialStatus.ok);
+    assert(residueCheck.unlock(passphrase) == CredentialStatus.ok);
+
+    assert(residueCheck.acquire(
+        concurrentHandleA,
+        (scope const(ubyte)[] bytes) @safe
+        {
+            assert(bytes == cast(const(ubyte)[]) "concurrent-a");
+        }
+    ) == CredentialStatus.ok);
+
+    concurrentCheck.lock();
+    residueCheck.lock();
 
     // Logical delete survives reopen.
     EncryptedVaultCredentialStore finalStore;
