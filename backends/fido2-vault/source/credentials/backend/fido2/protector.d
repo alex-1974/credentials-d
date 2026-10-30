@@ -1,0 +1,849 @@
+/**
+ * FIDO2 hmac-secret vault-key protector.
+ */
+module credentials.backend.fido2.protector;
+
+import core.exception : onOutOfMemoryError;
+import core.stdc.stdlib : free, malloc;
+import core.volatile : volatileStore;
+import credentials.backend.fido2.binding :
+    Fido2VaultBinding,
+    Fido2VerificationPolicy,
+    fido2ProtectorKind,
+    maximumCredentialIdBytes,
+    validRpId;
+import credentials.backend.fido2.ffi;
+import credentials.backend.vault.protector :
+    VaultUnlockEnvelope,
+    VaultWrappingKeySource,
+    protectorSaltBytes;
+import credentials.namespace : CredentialNamespace;
+import credentials.random : secureRandomBytes;
+import credentials.secret : SecretBuffer;
+import credentials.store :
+    CredentialStatus,
+    SecretVisitor;
+import std.string : fromStringz, toStringz;
+
+version (linux)
+{
+    import credentials.backend.vault.posix_protector :
+        createVaultUnlockEnvelopeForStore,
+        unlockVaultWithEnvelope;
+    import credentials.backend.vault.posix_store :
+        EncryptedVaultCredentialStore;
+}
+
+enum int defaultFido2TimeoutMilliseconds = 30_000;
+enum size_t maximumFido2Devices = 64;
+
+/**
+ * Non-secret runtime discovery metadata.
+ *
+ * Device paths are runtime selectors only and are never persisted in
+ * Fido2VaultBinding.
+ */
+struct Fido2DeviceInfo
+{
+    string path;
+    string manufacturer;
+    string product;
+}
+
+/**
+ * Discover currently available libfido2 devices.
+ *
+ * An empty list with status ok means no discoverable device is currently
+ * attached.
+ */
+CredentialStatus discoverFido2Devices(
+    out Fido2DeviceInfo[] devices
+) @trusted
+{
+    devices = null;
+
+    fido_init(FIDO_DISABLE_U2F_FALLBACK);
+
+    auto list = fido_dev_info_new(maximumFido2Devices);
+    if (list is null)
+        return CredentialStatus.backendFailure;
+
+    scope(exit) fido_dev_info_free(&list, maximumFido2Devices);
+
+    size_t count;
+    const rc =
+        fido_dev_info_manifest(
+            list,
+            maximumFido2Devices,
+            &count
+        );
+
+    if (rc != FIDO_OK)
+        return mapFidoStatus(rc);
+
+    if (count > maximumFido2Devices)
+        return CredentialStatus.backendFailure;
+
+    devices = new Fido2DeviceInfo[count];
+
+    foreach (i; 0 .. count)
+    {
+        const info = fido_dev_info_ptr(list, i);
+        if (info is null)
+            return CredentialStatus.backendFailure;
+
+        devices[i].path = copyCString(fido_dev_info_path(info));
+        devices[i].manufacturer =
+            copyCString(fido_dev_info_manufacturer_string(info));
+        devices[i].product =
+            copyCString(fido_dev_info_product_string(info));
+
+        if (devices[i].path.length == 0)
+            return CredentialStatus.backendFailure;
+    }
+
+    return CredentialStatus.ok;
+}
+
+/**
+ * Enroll a non-resident FIDO2 credential with hmac-secret enabled.
+ *
+ * For userVerificationRequired, credProtect=UV_REQUIRED and UV are requested.
+ * Unsupported protection is an error rather than a silent downgrade.
+ */
+CredentialStatus enrollFido2VaultBinding(
+    string devicePath,
+    string rpId,
+    Fido2VerificationPolicy policy,
+    out Fido2VaultBinding binding
+) @safe
+{
+    return enrollImpl(
+        devicePath,
+        rpId,
+        policy,
+        null,
+        binding
+    );
+}
+
+/**
+ * Enroll with an explicit PIN supplied through SecretBuffer.
+ *
+ * PIN authorization is valid only for the UV-required policy because
+ * hmac-secret output depends on whether UV was performed.
+ */
+CredentialStatus enrollFido2VaultBindingWithPin(
+    string devicePath,
+    string rpId,
+    Fido2VerificationPolicy policy,
+    scope ref const SecretBuffer pin,
+    out Fido2VaultBinding binding
+) @safe
+{
+    binding = Fido2VaultBinding.init;
+
+    if (policy !=
+        Fido2VerificationPolicy.userVerificationRequired)
+        return CredentialStatus.invalidInput;
+
+    CredentialStatus status = CredentialStatus.backendFailure;
+
+    status = withNativePin(
+        pin,
+        (const(char)* pinCString) @trusted
+        {
+            return enrollImpl(
+                devicePath,
+                rpId,
+                policy,
+                pinCString,
+                binding
+            );
+        }
+    );
+
+    return status;
+}
+
+/**
+ * Derive one credential-scoped 32-byte hmac-secret wrapping key.
+ */
+CredentialStatus withFido2WrappingKey(
+    string devicePath,
+    scope const Fido2VaultBinding binding,
+    scope const ubyte[protectorSaltBytes] salt,
+    scope SecretVisitor visitor
+) @safe
+{
+    return deriveImpl(
+        devicePath,
+        binding,
+        salt,
+        null,
+        visitor
+    );
+}
+
+/**
+ * Derive a UV-bound hmac-secret using a PIN from SecretBuffer.
+ */
+CredentialStatus withFido2WrappingKeyWithPin(
+    string devicePath,
+    scope const Fido2VaultBinding binding,
+    scope const ubyte[protectorSaltBytes] salt,
+    scope ref const SecretBuffer pin,
+    scope SecretVisitor visitor
+) @safe
+{
+    if (binding.verificationPolicy !=
+        Fido2VerificationPolicy.userVerificationRequired)
+        return CredentialStatus.invalidInput;
+
+    CredentialStatus status = CredentialStatus.backendFailure;
+
+    status = withNativePin(
+        pin,
+        (const(char)* pinCString) @trusted
+        {
+            return deriveImpl(
+                devicePath,
+                binding,
+                salt,
+                pinCString,
+                visitor
+            );
+        }
+    );
+
+    return status;
+}
+
+version (linux)
+{
+    /**
+     * Enroll a FIDO2 key and create an external unlock envelope for an
+     * already-unlocked POSIX vault.
+     *
+     * The existing passphrase wrapper remains valid as a recovery path.
+     */
+    CredentialStatus addFido2VaultUnlock(
+        EncryptedVaultCredentialStore store,
+        string devicePath,
+        string rpId,
+        Fido2VerificationPolicy policy,
+        out VaultUnlockEnvelope envelope
+    ) @safe
+    {
+        envelope = VaultUnlockEnvelope.init;
+
+        Fido2VaultBinding binding;
+        auto status = enrollFido2VaultBinding(
+            devicePath,
+            rpId,
+            policy,
+            binding
+        );
+        if (status != CredentialStatus.ok)
+            return status;
+
+        const encodedBinding = binding.serialize();
+
+        VaultWrappingKeySource source =
+            (scope const ubyte[protectorSaltBytes] salt,
+             scope SecretVisitor visitor) @safe
+            {
+                return withFido2WrappingKey(
+                    devicePath,
+                    binding,
+                    salt,
+                    visitor
+                );
+            };
+
+        return createVaultUnlockEnvelopeForStore(
+            store,
+            fido2ProtectorKind,
+            encodedBinding,
+            source,
+            envelope
+        );
+    }
+
+    /**
+     * UV/PIN variant of addFido2VaultUnlock.
+     */
+    CredentialStatus addFido2VaultUnlockWithPin(
+        EncryptedVaultCredentialStore store,
+        string devicePath,
+        string rpId,
+        scope ref const SecretBuffer pin,
+        out VaultUnlockEnvelope envelope
+    ) @safe
+    {
+        envelope = VaultUnlockEnvelope.init;
+
+        Fido2VaultBinding binding;
+        auto status = enrollFido2VaultBindingWithPin(
+            devicePath,
+            rpId,
+            Fido2VerificationPolicy.userVerificationRequired,
+            pin,
+            binding
+        );
+        if (status != CredentialStatus.ok)
+            return status;
+
+        const encodedBinding = binding.serialize();
+
+        VaultWrappingKeySource source =
+            (scope const ubyte[protectorSaltBytes] salt,
+             scope SecretVisitor visitor) @safe
+            {
+                return withFido2WrappingKeyWithPin(
+                    devicePath,
+                    binding,
+                    salt,
+                    pin,
+                    visitor
+                );
+            };
+
+        return createVaultUnlockEnvelopeForStore(
+            store,
+            fido2ProtectorKind,
+            encodedBinding,
+            source,
+            envelope
+        );
+    }
+
+    /**
+     * Unlock a POSIX vault through one FIDO2 envelope.
+     */
+    CredentialStatus unlockVaultWithFido2(
+        EncryptedVaultCredentialStore store,
+        string devicePath,
+        scope const VaultUnlockEnvelope envelope
+    ) @safe
+    {
+        Fido2VaultBinding binding;
+        const status = bindingFromEnvelope(envelope, binding);
+        if (status != CredentialStatus.ok)
+            return status;
+
+        VaultWrappingKeySource source =
+            (scope const ubyte[protectorSaltBytes] salt,
+             scope SecretVisitor visitor) @safe
+            {
+                return withFido2WrappingKey(
+                    devicePath,
+                    binding,
+                    salt,
+                    visitor
+                );
+            };
+
+        return unlockVaultWithEnvelope(
+            store,
+            envelope,
+            source
+        );
+    }
+
+    /**
+     * UV/PIN variant of unlockVaultWithFido2.
+     */
+    CredentialStatus unlockVaultWithFido2WithPin(
+        EncryptedVaultCredentialStore store,
+        string devicePath,
+        scope const VaultUnlockEnvelope envelope,
+        scope ref const SecretBuffer pin
+    ) @safe
+    {
+        Fido2VaultBinding binding;
+        const status = bindingFromEnvelope(envelope, binding);
+        if (status != CredentialStatus.ok)
+            return status;
+
+        if (binding.verificationPolicy !=
+            Fido2VerificationPolicy.userVerificationRequired)
+            return CredentialStatus.invalidInput;
+
+        VaultWrappingKeySource source =
+            (scope const ubyte[protectorSaltBytes] salt,
+             scope SecretVisitor visitor) @safe
+            {
+                return withFido2WrappingKeyWithPin(
+                    devicePath,
+                    binding,
+                    salt,
+                    pin,
+                    visitor
+                );
+            };
+
+        return unlockVaultWithEnvelope(
+            store,
+            envelope,
+            source
+        );
+    }
+}
+
+private CredentialStatus bindingFromEnvelope(
+    scope const VaultUnlockEnvelope envelope,
+    out Fido2VaultBinding binding
+) @safe
+{
+    binding = Fido2VaultBinding.init;
+
+    if (!envelope.valid ||
+        envelope.protectorKind != fido2ProtectorKind)
+        return CredentialStatus.invalidInput;
+
+    if (!Fido2VaultBinding.tryParse(
+        envelope.protectorBinding,
+        binding
+    ))
+        return CredentialStatus.corruptData;
+
+    return CredentialStatus.ok;
+}
+
+private CredentialStatus enrollImpl(
+    string devicePath,
+    string rpId,
+    Fido2VerificationPolicy policy,
+    const(char)* pin,
+    out Fido2VaultBinding binding
+) @trusted
+{
+    binding = Fido2VaultBinding.init;
+
+    if (!validDevicePath(devicePath) ||
+        !validRpId(rpId) ||
+        !validPolicy(policy))
+        return CredentialStatus.invalidInput;
+
+    fido_init(FIDO_DISABLE_U2F_FALLBACK);
+
+    auto dev = fido_dev_new();
+    if (dev is null)
+        return CredentialStatus.backendFailure;
+
+    scope(exit)
+    {
+        fido_dev_close(dev);
+        fido_dev_free(&dev);
+    }
+
+    int rc = fido_dev_open(
+        dev,
+        cast(const(char)*)toStringz(devicePath)
+    );
+    if (rc != FIDO_OK)
+        return mapFidoStatus(rc);
+
+    rc = fido_dev_set_timeout(
+        dev,
+        defaultFido2TimeoutMilliseconds
+    );
+    if (rc != FIDO_OK)
+        return mapFidoStatus(rc);
+
+    auto cred = fido_cred_new();
+    if (cred is null)
+        return CredentialStatus.backendFailure;
+
+    scope(exit) fido_cred_free(&cred);
+
+    ubyte[32] clientDataHash;
+    ubyte[32] userId;
+
+    if (!secureRandomBytes(clientDataHash[]) ||
+        !secureRandomBytes(userId[]))
+        return CredentialStatus.backendFailure;
+
+    if ((rc = fido_cred_set_type(cred, COSE_ES256)) != FIDO_OK ||
+        (rc = fido_cred_set_clientdata_hash(
+            cred,
+            clientDataHash.ptr,
+            clientDataHash.length
+        )) != FIDO_OK ||
+        (rc = fido_cred_set_rp(
+            cred,
+            cast(const(char)*)toStringz(rpId),
+            null
+        )) != FIDO_OK ||
+        (rc = fido_cred_set_user(
+            cred,
+            userId.ptr,
+            userId.length,
+            null,
+            null,
+            null
+        )) != FIDO_OK ||
+        (rc = fido_cred_set_rk(
+            cred,
+            FidoOpt.false_
+        )) != FIDO_OK)
+        return mapFidoStatus(rc);
+
+    int extensions = FIDO_EXT_HMAC_SECRET;
+
+    final switch (policy)
+    {
+        case Fido2VerificationPolicy.userPresence:
+            rc = fido_cred_set_uv(
+                cred,
+                FidoOpt.false_
+            );
+            break;
+
+        case Fido2VerificationPolicy.userVerificationRequired:
+            extensions |= FIDO_EXT_CRED_PROTECT;
+
+            rc = fido_cred_set_uv(
+                cred,
+                FidoOpt.true_
+            );
+            if (rc == FIDO_OK)
+                rc = fido_cred_set_prot(
+                    cred,
+                    FIDO_CRED_PROT_UV_REQUIRED
+                );
+            break;
+    }
+
+    if (rc != FIDO_OK)
+        return mapFidoStatus(rc);
+
+    rc = fido_cred_set_extensions(cred, extensions);
+    if (rc != FIDO_OK)
+        return mapFidoStatus(rc);
+
+    rc = fido_dev_make_cred(dev, cred, pin);
+    if (rc != FIDO_OK)
+    {
+        fido_dev_cancel(dev);
+        return mapFidoStatus(rc);
+    }
+
+    const idLength = fido_cred_id_len(cred);
+    const id = fido_cred_id_ptr(cred);
+
+    if (id is null ||
+        idLength == 0 ||
+        idLength > maximumCredentialIdBytes)
+        return CredentialStatus.backendFailure;
+
+    binding = Fido2VaultBinding.trusted(
+        rpId,
+        id[0 .. idLength],
+        policy
+    );
+
+    return binding.valid
+        ? CredentialStatus.ok
+        : CredentialStatus.backendFailure;
+}
+
+private CredentialStatus deriveImpl(
+    string devicePath,
+    scope const Fido2VaultBinding binding,
+    scope const ubyte[protectorSaltBytes] salt,
+    const(char)* pin,
+    scope SecretVisitor visitor
+) @trusted
+{
+    if (!validDevicePath(devicePath) ||
+        !binding.valid ||
+        visitor is null)
+        return CredentialStatus.invalidInput;
+
+    fido_init(FIDO_DISABLE_U2F_FALLBACK);
+
+    auto dev = fido_dev_new();
+    if (dev is null)
+        return CredentialStatus.backendFailure;
+
+    scope(exit)
+    {
+        fido_dev_close(dev);
+        fido_dev_free(&dev);
+    }
+
+    int rc = fido_dev_open(
+        dev,
+        cast(const(char)*)toStringz(devicePath)
+    );
+    if (rc != FIDO_OK)
+        return mapFidoStatus(rc);
+
+    rc = fido_dev_set_timeout(
+        dev,
+        defaultFido2TimeoutMilliseconds
+    );
+    if (rc != FIDO_OK)
+        return mapFidoStatus(rc);
+
+    auto assertion = fido_assert_new();
+    if (assertion is null)
+        return CredentialStatus.backendFailure;
+
+    scope(exit) fido_assert_free(&assertion);
+
+    ubyte[32] clientDataHash;
+    if (!secureRandomBytes(clientDataHash[]))
+        return CredentialStatus.backendFailure;
+
+    if ((rc = fido_assert_set_clientdata_hash(
+            assertion,
+            clientDataHash.ptr,
+            clientDataHash.length
+        )) != FIDO_OK ||
+        (rc = fido_assert_set_rp(
+            assertion,
+            cast(const(char)*)toStringz(binding.rpId)
+        )) != FIDO_OK ||
+        (rc = fido_assert_allow_cred(
+            assertion,
+            binding.credentialId.ptr,
+            binding.credentialId.length
+        )) != FIDO_OK ||
+        (rc = fido_assert_set_extensions(
+            assertion,
+            FIDO_EXT_HMAC_SECRET
+        )) != FIDO_OK ||
+        (rc = fido_assert_set_hmac_salt(
+            assertion,
+            salt.ptr,
+            salt.length
+        )) != FIDO_OK ||
+        (rc = fido_assert_set_up(
+            assertion,
+            FidoOpt.true_
+        )) != FIDO_OK)
+        return mapFidoStatus(rc);
+
+    final switch (binding.verificationPolicy)
+    {
+        case Fido2VerificationPolicy.userPresence:
+            rc = fido_assert_set_uv(
+                assertion,
+                FidoOpt.false_
+            );
+            break;
+
+        case Fido2VerificationPolicy.userVerificationRequired:
+            rc = fido_assert_set_uv(
+                assertion,
+                FidoOpt.true_
+            );
+            break;
+    }
+
+    if (rc != FIDO_OK)
+        return mapFidoStatus(rc);
+
+    rc = fido_dev_get_assert(dev, assertion, pin);
+    if (rc != FIDO_OK)
+    {
+        fido_dev_cancel(dev);
+        return mapFidoStatus(rc);
+    }
+
+    if (fido_assert_count(assertion) != 1)
+        return CredentialStatus.backendFailure;
+
+    const secretLength =
+        fido_assert_hmac_secret_len(assertion, 0);
+    const secret =
+        fido_assert_hmac_secret_ptr(assertion, 0);
+
+    if (secret is null || secretLength != 32)
+        return CredentialStatus.unsupported;
+
+    visitor(secret[0 .. secretLength]);
+    return CredentialStatus.ok;
+}
+
+private bool validDevicePath(string path)
+    @nogc nothrow @safe
+{
+    if (path.length == 0)
+        return false;
+
+    foreach (char c; path)
+        if (c == '\0')
+            return false;
+
+    return true;
+}
+
+private bool validPolicy(Fido2VerificationPolicy policy)
+    @nogc nothrow pure @safe
+{
+    return
+        policy == Fido2VerificationPolicy.userPresence ||
+        policy ==
+            Fido2VerificationPolicy.userVerificationRequired;
+}
+
+private alias NativePinOperation =
+    CredentialStatus delegate(const(char)* pin) @trusted;
+
+private CredentialStatus withNativePin(
+    scope ref const SecretBuffer pin,
+    scope NativePinOperation operation
+) @trusted
+{
+    if (operation is null || pin.empty)
+        return CredentialStatus.invalidInput;
+
+    CredentialStatus status = CredentialStatus.invalidInput;
+
+    pin.withBytes((scope const(ubyte)[] bytes) @safe
+    {
+        if (bytes.length == 0 || bytes.length > 255)
+        {
+            status = CredentialStatus.invalidInput;
+            return;
+        }
+
+        foreach (ubyte value; bytes)
+        {
+            if (value == 0)
+            {
+                status = CredentialStatus.invalidInput;
+                return;
+            }
+        }
+
+        auto buffer =
+            cast(char*)malloc(bytes.length + 1);
+        if (buffer is null)
+            onOutOfMemoryError();
+
+        scope(exit)
+        {
+            foreach (i; 0 .. bytes.length + 1)
+                volatileStore(
+                    cast(ubyte*)buffer + i,
+                    cast(ubyte)0
+                );
+            free(buffer);
+        }
+
+        buffer[0 .. bytes.length] =
+            cast(const(char)[])bytes[];
+        buffer[bytes.length] = '\0';
+
+        status = operation(buffer);
+    });
+
+    return status;
+}
+
+private string copyCString(const(char)* value) @trusted
+{
+    if (value is null)
+        return null;
+
+    return fromStringz(value).idup;
+}
+
+private CredentialStatus mapFidoStatus(int status)
+    @nogc nothrow @safe
+{
+    switch (status)
+    {
+        case FIDO_OK:
+            return CredentialStatus.ok;
+
+        case FIDO_ERR_UNSUPPORTED_EXTENSION:
+        case FIDO_ERR_UNSUPPORTED_ALGORITHM:
+        case FIDO_ERR_UNSUPPORTED_OPTION:
+        case FIDO_ERR_INVALID_OPTION:
+            return CredentialStatus.unsupported;
+
+        case FIDO_ERR_NO_CREDENTIALS:
+        case FIDO_ERR_INVALID_CREDENTIAL:
+        case FIDO_ERR_NOTFOUND:
+            return CredentialStatus.notFound;
+
+        case FIDO_ERR_PIN_REQUIRED:
+        case FIDO_ERR_PIN_NOT_SET:
+        case FIDO_ERR_UP_REQUIRED:
+        case FIDO_ERR_USER_PRESENCE_REQUIRED:
+        case FIDO_ERR_USER_ACTION_PENDING:
+        case FIDO_ERR_OPERATION_PENDING:
+            return CredentialStatus.interactionRequired;
+
+        case FIDO_ERR_KEEPALIVE_CANCEL:
+        case FIDO_ERR_OPERATION_DENIED:
+        case FIDO_ERR_NOT_ALLOWED:
+        case FIDO_ERR_USER_ACTION_TIMEOUT:
+        case FIDO_ERR_ACTION_TIMEOUT:
+            return CredentialStatus.userCancelled;
+
+        case FIDO_ERR_PIN_INVALID:
+        case FIDO_ERR_PIN_BLOCKED:
+        case FIDO_ERR_PIN_AUTH_INVALID:
+        case FIDO_ERR_PIN_AUTH_BLOCKED:
+        case FIDO_ERR_PIN_POLICY_VIOLATION:
+        case FIDO_ERR_PIN_TOKEN_EXPIRED:
+        case FIDO_ERR_UV_BLOCKED:
+        case FIDO_ERR_UV_INVALID:
+        case FIDO_ERR_UNAUTHORIZED_PERM:
+            return CredentialStatus.permissionDenied;
+
+        case FIDO_ERR_INVALID_COMMAND:
+        case FIDO_ERR_INVALID_PARAMETER:
+        case FIDO_ERR_INVALID_LENGTH:
+        case FIDO_ERR_INVALID_PARAM:
+        case FIDO_ERR_INVALID_ARGUMENT:
+            return CredentialStatus.invalidInput;
+
+        case FIDO_ERR_LIMIT_EXCEEDED:
+        case FIDO_ERR_REQUEST_TOO_LARGE:
+            return CredentialStatus.tooLarge;
+
+        case FIDO_ERR_TIMEOUT:
+        case FIDO_ERR_CHANNEL_BUSY:
+        case FIDO_ERR_TX:
+        case FIDO_ERR_RX:
+        case FIDO_ERR_RX_NOT_CBOR:
+        case FIDO_ERR_RX_INVALID_CBOR:
+        case FIDO_ERR_INVALID_SIG:
+        case FIDO_ERR_INTERNAL:
+        case FIDO_ERR_CREDENTIAL_EXCLUDED:
+        case FIDO_ERR_KEY_STORE_FULL:
+            return CredentialStatus.backendFailure;
+
+        default:
+            return CredentialStatus.backendFailure;
+    }
+}
+
+@("libfido2 status mapping is fail-closed")
+unittest
+{
+    assert(
+        mapFidoStatus(FIDO_ERR_UNSUPPORTED_EXTENSION) ==
+        CredentialStatus.unsupported
+    );
+    assert(
+        mapFidoStatus(FIDO_ERR_PIN_REQUIRED) ==
+        CredentialStatus.interactionRequired
+    );
+    assert(
+        mapFidoStatus(FIDO_ERR_PIN_INVALID) ==
+        CredentialStatus.permissionDenied
+    );
+    assert(
+        mapFidoStatus(FIDO_ERR_NO_CREDENTIALS) ==
+        CredentialStatus.notFound
+    );
+}
