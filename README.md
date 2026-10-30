@@ -56,8 +56,10 @@ No cryptographic backend decision has been made. Botan, libsodium or another
 implementation must be qualified against the exact narrow primitive set needed
 before an encrypted-vault backend is admitted.
 
-See [ADR 0001](docs/adr/0001-security-scope.md) for the initial scope and threat
-boundary, and [SECURITY.md](SECURITY.md) for vulnerability reporting.
+See [ADR 0001](docs/adr/0001-security-scope.md) for the initial scope,
+[Threat Model and Security Contract](docs/security/THREAT_MODEL.md) for the
+normative security boundary, and [SECURITY.md](SECURITY.md) for vulnerability
+reporting.
 
 ## Compatibility baseline
 
