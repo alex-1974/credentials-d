@@ -13,3 +13,9 @@ public import credentials.backend.vault.core :
     vaultPut,
     vaultRemove,
     vaultReplace;
+
+version (linux)
+{
+    public import credentials.backend.vault.posix_store :
+        EncryptedVaultCredentialStore;
+}
