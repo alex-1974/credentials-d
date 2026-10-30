@@ -1,0 +1,8 @@
+name "credentials-d-fido2-hardware-qualification"
+description "Interactive physical-authenticator qualification for credentials-d FIDO2 vault unlock"
+license "MIT"
+
+targetType "executable"
+sourcePaths "source"
+
+dependency "credentials-d:fido2-vault" path="../.."
