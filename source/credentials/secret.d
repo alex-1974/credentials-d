@@ -66,7 +66,7 @@ struct SecretBuffer
     /**
      * Number of currently owned plaintext bytes.
      */
-    @property size_t length() const @nogc nothrow pure @safe
+    @property size_t length() const scope @nogc nothrow pure @safe
     {
         return length_;
     }
@@ -74,7 +74,7 @@ struct SecretBuffer
     /**
      * Whether this buffer currently owns no plaintext bytes.
      */
-    @property bool empty() const @nogc nothrow pure @safe
+    @property bool empty() const scope @nogc nothrow pure @safe
     {
         return length_ == 0;
     }
