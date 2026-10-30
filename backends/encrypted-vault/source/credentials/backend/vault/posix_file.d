@@ -68,6 +68,7 @@ enum VaultFileStatus
     permissionDenied,
     unsafeState,
     tooLarge,
+    commitUncertain,
     ioFailure
 }
 
@@ -431,13 +432,15 @@ VaultFileStatus createVaultImage(
 
     status = syncParent(vaultPath);
     if (status != VaultFileStatus.ok)
-        return status;
+        return VaultFileStatus.commitUncertain;
 
-    if (unlink(tempZ) != 0)
-        return VaultFileStatus.ioFailure;
+    // Once the final name is durable, a cleanup failure can only leave an
+    // additional encrypted temporary hard-link. It does not make the vault
+    // commit ambiguous.
+    if (unlink(tempZ) == 0)
+        syncParent(vaultPath);
 
-    // Persist removal of the temporary directory entry as well.
-    return syncParent(vaultPath);
+    return VaultFileStatus.ok;
 }
 
 /**
@@ -473,5 +476,10 @@ VaultFileStatus replaceVaultImage(
         return errnoStatus(errno);
 
     renamed = true;
-    return syncParent(vaultPath);
+
+    status = syncParent(vaultPath);
+    if (status != VaultFileStatus.ok)
+        return VaultFileStatus.commitUncertain;
+
+    return VaultFileStatus.ok;
 }
