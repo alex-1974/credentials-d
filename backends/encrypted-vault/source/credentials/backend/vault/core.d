@@ -985,6 +985,15 @@ package(credentials.backend.vault):
 enum size_t maximumVaultImageBytes =
     fixedHeaderBytes + 96 + maxPayloadBytes + aeadTagBytes;
 
+VaultCoreStatus validateVaultImageHeader(
+    scope const(ubyte)[] image,
+    CredentialNamespace ns
+) @safe
+{
+    HeaderView header;
+    return parseHeader(image, ns, header);
+}
+
 VaultCoreStatus unlockVaultSession(
     scope const(ubyte)[] image,
     CredentialNamespace ns,
