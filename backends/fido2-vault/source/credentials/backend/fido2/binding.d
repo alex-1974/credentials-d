@@ -156,7 +156,7 @@ struct Fido2VaultBinding
 
         pos += rpLength;
 
-        binding.rpId_ = cast(string)rpChars;
+        binding.rpId_ = rpChars.idup;
         binding.credentialId_ =
             input[pos .. pos + cast(size_t)credentialLength].dup;
         binding.policy_ = policy;
