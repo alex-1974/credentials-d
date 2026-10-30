@@ -20,12 +20,15 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os:
-          - windows-2025
-          - macos-15-intel
-        compiler:
-          - dmd-2.111.0
-          - ldc-1.41.0
+        include:
+          - os: windows-2025
+            compiler: dmd-2.111.0
+          - os: windows-2025
+            compiler: ldc-1.41.0
+          - os: macos-15-intel
+            compiler: ldc-1.41.0
+          - os: macos-15-intel
+            compiler: dmd-2.113.0
 
     steps:
       - name: Check out repository
