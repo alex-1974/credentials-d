@@ -74,6 +74,14 @@ jobs:
             --compiler="$DC" \
             --force
 
+      - name: Physical-authenticator qualification harness builds
+        shell: bash
+        run: |
+          dub build \
+            --root=qualification/fido2-hardware \
+            --compiler="$DC" \
+            --force
+
       - name: FIDO2 vault release build
         shell: bash
         run: |
