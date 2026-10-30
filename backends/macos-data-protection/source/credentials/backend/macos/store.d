@@ -459,7 +459,7 @@ final class MacOSDataProtectionCredentialStore : CredentialStore
                 return CredentialStatus.corruptData;
 
             case errSecParam:
-                return CredentialStatus.backendFailure;
+                return CredentialStatus.invalidInput;
 
             default:
                 return CredentialStatus.backendFailure;
