@@ -4,6 +4,9 @@ All notable changes to this project will be documented here.
 
 ## Unreleased
 
+- Add concurrent encrypted-vault writer and crash-residue regression coverage.
+- Add a package-private libFuzzer-compatible vault-header parser target and compile it in the vault security gate.
+
 - Gate native credential backends and encrypted-vault security checks on release candidates targeting `main`.
 - Add a bounded malformed-vault header corpus covering structural truncation, invalid KDF costs, lengths, namespace syntax and trailing data before key derivation.
 

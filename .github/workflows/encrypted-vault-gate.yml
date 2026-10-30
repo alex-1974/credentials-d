@@ -64,6 +64,14 @@ jobs:
               --compiler="$DC" \
               --force
 
+      - name: Vault header fuzz target builds
+        shell: bash
+        run: |
+          dub build \
+            --root=tests/encrypted-vault-fuzz \
+            --compiler="$DC" \
+            --force
+
       - name: POSIX encrypted-vault integration
         shell: bash
         run: |
