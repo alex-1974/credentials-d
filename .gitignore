@@ -17,3 +17,6 @@ dub.selections.json
 /credentials-d-test-library
 
 .workspace/
+
+# Local hardware/deployment qualification receipts
+qualification-results/
