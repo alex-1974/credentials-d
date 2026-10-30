@@ -157,14 +157,30 @@ It does not switch to the legacy file-based keychain when this happens.
 
 The macOS hosted-runner gate always compiles and executes the native backend.
 
-Two outcomes are security-valid in that generic CI environment:
+The hosted runner is explicitly marked as an **unprovisioned command-line
+host**. Apple documents that the restricted Data Protection Keychain
+entitlements require an app-like bundle plus provisioning authorization.
 
-1. the runner has a suitable DPK authorization context and the full binary
-   store/read/reopen/replace/delete integration passes; or
-2. the first write fails explicitly with `permissionDenied` or
-   `unavailable`, produces no handle, and proves no legacy fallback occurred.
+In that deliberately non-production context, the gate accepts only:
 
-Outcome 2 is **not** a production integration qualification.
+1. full store/read/reopen/replace/delete integration; or
+2. a fail-closed first write that produces no handle.
+
+Observed toolchains may be rejected by Security.framework at different stages:
+DMD currently reaches `permissionDenied`, while LDC 1.41 may receive
+`errSecParam` / `invalidInput` in the unprovisioned CLI host. The latter is
+accepted **only** when the CI fixture explicitly marks this exact
+unprovisioned context.
+
+The backend itself keeps `errSecParam -> invalidInput`. A normal or
+production-signing integration run never treats `invalidInput` as an
+entitlement error.
+
+The gate also emits the executable's code-signing/entitlement diagnostics so
+changes in the hosted-runner signing context are visible.
+
+A hosted fail-closed outcome is **not** a production integration
+qualification.
 
 Before a release advertises the macOS DPK backend as production-qualified, the
 same integration fixture must pass in a properly signed app-like macOS

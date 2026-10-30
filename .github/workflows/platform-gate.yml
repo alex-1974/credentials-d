@@ -66,7 +66,18 @@ jobs:
       - name: macOS Data Protection Keychain integration or fail-closed qualification
         if: startsWith(matrix.os, 'macos-')
         shell: bash
-        run: dub run --root=tests/macos-data-protection-integration --compiler="$DC" --force
+        env:
+          CREDENTIALS_D_MACOS_UNPROVISIONED_CI: "1"
+        run: |
+          dub build             --root=tests/macos-data-protection-integration             --compiler="$DC"             --force
+
+          BIN="tests/macos-data-protection-integration/credentials-d-macos-data-protection-integration"
+
+          echo "=== hosted-runner code-signing context ==="
+          codesign -dv --verbose=4 "$BIN" 2>&1 || true
+          codesign -d --entitlements :- "$BIN" 2>&1 || true
+
+          "$BIN"
 
       - name: SecretBuffer negative compile contracts
         shell: bash
