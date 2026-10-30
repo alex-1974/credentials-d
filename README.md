@@ -110,6 +110,41 @@ See [ADR 0002](docs/adr/0002-credential-store-public-contract.md) for the
 original API semantics and [ADR 0003](docs/adr/0003-core-security-hardening.md)
 for the hardened ownership and backend contract.
 
+## Native backends
+
+Native credential stores are explicit DUB subpackages. The core package never
+silently selects a backend or falls back to weaker persistence.
+
+### Windows Credential Manager
+
+Windows consumers can opt into:
+
+```text
+credentials-d:windows
+```
+
+and create:
+
+```d
+import credentials : CredentialNamespace;
+import credentials.backend.windows : WindowsCredentialStore;
+
+CredentialNamespace ns;
+assert(CredentialNamespace.tryParse("org.example.application", ns));
+
+auto store = new WindowsCredentialStore(ns);
+```
+
+The backend uses Generic Credentials with local-machine persistence for the
+current Windows user, validates the 2560-byte blob limit before native calls,
+uses opaque OS-CSPRNG record identifiers, and wipes plaintext returned by
+`CredReadW` before `CredFree`.
+
+It does not claim hardware-backed or Credential Guard protection, and it does
+not silently fall back when Windows Credential Manager is unavailable.
+
+See [ADR 0004](docs/adr/0004-windows-credential-manager.md).
+
 ## Compatibility baseline
 
 Minimum supported D frontend:

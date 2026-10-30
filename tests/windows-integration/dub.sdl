@@ -1,0 +1,8 @@
+name "credentials-d-windows-integration"
+description "Native Windows Credential Manager integration qualification"
+license "MIT"
+
+targetType "executable"
+sourcePaths "source"
+
+dependency "credentials-d:windows" path="../.."
