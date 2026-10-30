@@ -17,3 +17,4 @@ All notable changes to this project will be documented here.
 - Carry secret ownership and scope-negative tests into the release gate.
 - Add qualified OS-CSPRNG record locators for Linux, Windows and macOS.
 - Add an explicit Windows Credential Manager backend subpackage with native integration tests.
+- Add an explicit Linux Secret Service/libsecret backend with binary-secret and unavailable-service integration tests.
