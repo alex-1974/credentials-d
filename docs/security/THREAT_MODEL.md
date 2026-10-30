@@ -299,6 +299,19 @@ Errors may identify:
 
 but must not include secret contents.
 
+### S12 — No silent security downgrade
+
+Failure or absence of the selected backend must fail closed.
+
+credentials-d must not silently switch to:
+
+- plaintext settings;
+- an ad-hoc credential file;
+- a weaker platform store;
+- an encrypted vault that the consumer did not explicitly select.
+
+Backend selection is part of the consumer's security policy.
+
 ## 7. Meaning of "locked"
 
 `locked` is a semantic state in which acquisition of secret plaintext is not
@@ -343,19 +356,24 @@ Credential plaintext may exist only where required for:
 
 The implementation should:
 
-- prefer byte-oriented secret types over GC-managed `string`;
+- keep owned credential plaintext out of GC-managed `string` storage;
 - minimize copying;
 - avoid hidden formatting conversions;
-- erase owned mutable buffers before release where technically meaningful;
+- erase owned mutable buffers before release with a compiler-recognized
+  non-elidable mechanism;
 - document when external APIs or runtimes may create unavoidable copies.
 
-The library does not guarantee that compiler optimizations, foreign libraries,
-the OS, swap, core dumps or a compromised process cannot retain or observe a
-copy.
+The core `SecretBuffer` uses non-GC owned memory and
+`core.volatile.volatileStore` for its allocation-level zeroization contract.
+The source buffer used to construct a `SecretBuffer` remains the caller's
+responsibility.
 
-Any claimed deterministic zeroization behavior must be independently verified
-for the exact D/compiler/backend implementation before it becomes a public
-guarantee.
+The library does not guarantee that foreign libraries, registers, stack spills,
+the OS, swap, hibernation, core dumps or a compromised process cannot retain or
+observe another copy.
+
+Stronger claims such as page locking, dump exclusion or guarded allocations
+must be separately qualified before they are advertised.
 
 ## 9. Logging, diagnostics and crash handling
 
@@ -480,6 +498,7 @@ At minimum, the test plan must include:
 | S8 | capability contract tests per backend |
 | S9 | metadata-only access tests |
 | S10 | replacement/rotation tests proving old plaintext is not returned |
+| S12 | unavailable-backend tests proving no handle or weaker persistence path is produced |
 | deletion | backend-specific deletion tests, without claiming physical erasure beyond the backend contract |
 | vault integrity | modified, truncated, malformed and unauthenticated file corpus plus fuzzing if a vault is admitted |
 | platform stores | real-platform integration tests in addition to mocks |
