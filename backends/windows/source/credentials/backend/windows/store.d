@@ -75,7 +75,10 @@ private extern(Windows) @nogc nothrow
         DWORD flags
     );
     void CredFree(void* buffer);
-    BOOL CredGetSessionTypes(scope DWORD* maximumPersist);
+    BOOL CredGetSessionTypes(
+        DWORD maximumPersistCount,
+        scope DWORD* maximumPersist
+    );
 }
 
 /**
@@ -376,7 +379,10 @@ final class WindowsCredentialStore : CredentialStore
     {
         DWORD[CRED_TYPE_MAXIMUM] maximumPersist;
 
-        if (!CredGetSessionTypes(maximumPersist.ptr))
+        if (!CredGetSessionTypes(
+            CRED_TYPE_MAXIMUM,
+            maximumPersist.ptr
+        ))
             return false;
 
         return maximumPersist[CRED_TYPE_GENERIC] >=
