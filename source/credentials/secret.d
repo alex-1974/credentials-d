@@ -3,8 +3,6 @@
  */
 module credentials.secret;
 
-import std.algorithm.mutation : fill;
-import std.array : array;
 
 /**
  * Owns one mutable copy of credential bytes.
@@ -30,7 +28,8 @@ final class SecretBuffer
      */
     this(scope const(ubyte)[] source) @safe
     {
-        bytes_ = source.array;
+        bytes_ = new ubyte[source.length];
+        bytes_[] = source[];
     }
 
     /**
@@ -80,7 +79,8 @@ final class SecretBuffer
      */
     void clear() @safe
     {
-        bytes_.fill(0);
+        foreach (ref value; bytes_)
+            value = 0;
         bytes_ = null;
     }
 
@@ -100,7 +100,9 @@ final class SecretBuffer
      */
     package(credentials) ubyte[] duplicateBytes() const @safe
     {
-        return bytes_.array;
+        auto copy = new ubyte[bytes_.length];
+        copy[] = bytes_[];
+        return copy;
     }
 }
 
