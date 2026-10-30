@@ -442,8 +442,13 @@ private void waitForRemoval(string deviceA)
 
 void main(string[] args)
 {
+    stderr.writeln("qualification_start=fido2-hardware-v1");
+
     const options = parseOptions(args);
+    stderr.writeln("qualification_stage=options-parsed");
+
     const devices = discover();
+    stderr.writeln("qualification_stage=discovery-complete");
 
     writeln("qualification=fido2-hardware-v1");
     writeln("d_frontend=", __VERSION__);
