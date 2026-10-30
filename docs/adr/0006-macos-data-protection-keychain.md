@@ -159,16 +159,24 @@ The macOS hosted-runner gate always compiles and executes the native backend.
 
 Two outcomes are security-valid in that generic CI environment:
 
-1. the runner has a suitable DPK authorization context and the full binary
-   store/read/reopen/replace/delete integration passes; or
-2. the first write fails explicitly with `permissionDenied` or
-   `unavailable`, produces no handle, and proves no legacy fallback occurred.
+1. the runner happens to have a DPK-compatible authorization context and the
+   full binary store/read/reopen/replace/delete integration passes; or
+2. the first write fails closed before a handle is produced.
 
-Outcome 2 is **not** a production integration qualification.
+Observed generic-runner failure classifications include
+`permissionDenied`, `unavailable`, and `invalidInput` / native
+`errSecParam`. The latter is accepted **only** by the explicitly
+unqualified-host CI fixture; the production backend still maps native
+`errSecParam` to `invalidInput` rather than disguising programming errors
+as entitlement failures.
+
+Neither outcome on an unsigned/non-app-like hosted CLI is a production
+integration qualification.
 
 Before a release advertises the macOS DPK backend as production-qualified, the
 same integration fixture must pass in a properly signed app-like macOS
 consumer with its real keychain-access entitlement/provisioning context.
+This is tracked as a separate release qualification task.
 
 ## Failure mapping
 
