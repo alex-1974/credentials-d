@@ -91,6 +91,14 @@ jobs:
             false
           fi
 
+          if dub build \
+              --root=tests/compile-negative/secret-copy \
+              --compiler="$DC" \
+              --force; then
+            echo "Expected SecretBuffer copy to fail."
+            false
+          fi
+
       - name: Documentation build
         if: startsWith(matrix.compiler, 'dmd-')
         shell: bash
