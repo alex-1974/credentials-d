@@ -264,7 +264,7 @@ final class MacOSDataProtectionCredentialStore : CredentialStore
             kSecAttrAccessibleWhenUnlockedThisDeviceOnly
         );
 
-        auto data = makeData(bytes);
+        auto data = makeNoCopyData(bytes);
         if (data is null)
             return CredentialStatus.backendFailure;
 
@@ -286,7 +286,7 @@ final class MacOSDataProtectionCredentialStore : CredentialStore
 
         scope(exit) CFRelease(updates);
 
-        auto data = makeData(bytes);
+        auto data = makeNoCopyData(bytes);
         if (data is null)
             return CredentialStatus.backendFailure;
 
@@ -400,18 +400,10 @@ final class MacOSDataProtectionCredentialStore : CredentialStore
     }
 
     /**
-     * Create a CoreFoundation-owned immutable copy for Security.framework.
-     *
-     * This deliberately uses CFDataCreate instead of
-     * CFDataCreateWithBytesNoCopy. Apple does not guarantee that the no-copy
-     * constructor avoids copying, and the owned CFData form provides the most
-     * conservative ABI/lifetime contract across D compilers.
-     *
-     * The temporary CFData is released immediately after the synchronous
-     * SecItem operation. credentials-d cannot zero Security.framework or
-     * CoreFoundation internal copies.
+     * Wrap scoped SecretBuffer bytes without making a credentials-d-owned
+     * plaintext copy. The wrapper never owns the backing bytes.
      */
-    private static CFDataRef makeData(
+    private static CFDataRef makeNoCopyData(
         scope const(ubyte)[] bytes
     ) @trusted
     {
@@ -419,10 +411,11 @@ final class MacOSDataProtectionCredentialStore : CredentialStore
             ? cast(const(ubyte)*) "".ptr
             : bytes.ptr;
 
-        return CFDataCreate(
+        return CFDataCreateWithBytesNoCopy(
             null,
             ptr,
-            cast(CFIndex) bytes.length
+            cast(CFIndex) bytes.length,
+            kCFAllocatorNull
         );
     }
 
