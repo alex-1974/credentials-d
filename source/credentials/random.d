@@ -13,6 +13,8 @@ version (linux)
 }
 else version (Windows)
 {
+    pragma(lib, "bcrypt");
+
     import core.sys.windows.bcrypt :
         BCryptGenRandom,
         BCRYPT_SUCCESS,
