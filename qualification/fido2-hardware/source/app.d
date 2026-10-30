@@ -468,6 +468,61 @@ private bool findDevicePresent(
     return findDevice(devices, path, ignored);
 }
 
+private VaultUnlockEnvelope withReplacementBinding(
+    scope const VaultUnlockEnvelope original,
+    scope const Fido2VaultBinding replacement
+)
+{
+    const originalBytes = original.serialize();
+    const oldBinding = original.protectorBinding;
+    const newBinding = replacement.serialize();
+
+    enforce(
+        oldBinding.length <= originalBytes.length,
+        "protector binding longer than serialized envelope"
+    );
+
+    const bindingOffset =
+        originalBytes.length - oldBinding.length;
+
+    enforce(
+        originalBytes[bindingOffset .. $] == oldBinding[],
+        "serialized envelope binding is not the final field"
+    );
+
+    enforce(
+        newBinding.length <= uint.max,
+        "replacement protector binding too large"
+    );
+
+    auto rewritten =
+        new ubyte[bindingOffset + newBinding.length];
+    rewritten[0 .. bindingOffset] =
+        originalBytes[0 .. bindingOffset];
+
+    enum size_t bindingLengthOffset = 8 + 2 + 2;
+    const length = cast(uint)newBinding.length;
+
+    rewritten[bindingLengthOffset + 0] =
+        cast(ubyte)length;
+    rewritten[bindingLengthOffset + 1] =
+        cast(ubyte)(length >> 8);
+    rewritten[bindingLengthOffset + 2] =
+        cast(ubyte)(length >> 16);
+    rewritten[bindingLengthOffset + 3] =
+        cast(ubyte)(length >> 24);
+
+    rewritten[bindingOffset .. $] = newBinding[];
+
+    VaultUnlockEnvelope result;
+    enforce(
+        VaultUnlockEnvelope.tryParse(rewritten, result),
+        "wrong-credential envelope did not parse"
+    );
+    return result;
+}
+
+
 private void waitForRemoval(string deviceA)
 {
     stderr.writeln(
@@ -899,6 +954,51 @@ void main(string[] args)
     enforce(reopened.isLocked, "tampered envelope unlocked the vault");
 
     writeln("tampered_envelope_rejected=PASS");
+
+    stderr.writeln(
+        "ACTION_REQUIRED=Touch the authenticator when it starts blinking to enroll an independent wrong-credential test binding."
+    );
+    stderr.flush();
+
+    Fido2VaultBinding wrongCredentialBinding;
+    enforceStatus(
+        enroll(
+            options,
+            selectedDeviceA,
+            pin,
+            wrongCredentialBinding
+        ),
+        CredentialStatus.ok,
+        "wrong-credential test enrollment"
+    );
+
+    const wrongCredentialEnvelope =
+        withReplacementBinding(
+            parsedEnvelopeA,
+            wrongCredentialBinding
+        );
+
+    stderr.writeln(
+        "ACTION_REQUIRED=Touch the authenticator when it starts blinking for the wrong-credential rejection check."
+    );
+    stderr.flush();
+
+    enforceStatus(
+        unlockEnvelope(
+            options,
+            reopened,
+            selectedDeviceA,
+            wrongCredentialEnvelope,
+            pin
+        ),
+        CredentialStatus.permissionDenied,
+        "wrong FIDO2 credential"
+    );
+    enforce(
+        reopened.isLocked,
+        "wrong FIDO2 credential unlocked the vault"
+    );
+    writeln("wrong_credential_rejected=PASS");
 
     if (hasDeviceB)
     {
