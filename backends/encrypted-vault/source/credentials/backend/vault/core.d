@@ -130,6 +130,17 @@ struct Writer
         return true;
     }
 
+    bool putAscii(string text) @safe
+    {
+        if (pos > data.length || text.length > data.length - pos)
+            return false;
+
+        foreach (char ch; text)
+            data[pos++] = cast(ubyte) ch;
+
+        return true;
+    }
+
     bool putU16(ushort value) @safe
     {
         ubyte[2] b = [
@@ -296,10 +307,13 @@ VaultCoreStatus parseHeader(
     if (!validNamespaceBytes(header.namespaceBytes))
         return VaultCoreStatus.corruptData;
 
-    const expectedBytes =
-        cast(const(ubyte)[]) expectedNamespace.serialize();
-    if (header.namespaceBytes != expectedBytes)
+    const expectedText = expectedNamespace.serialize();
+    if (header.namespaceBytes.length != expectedText.length)
         return VaultCoreStatus.invalidInput;
+
+    foreach (i, char ch; expectedText)
+        if (header.namespaceBytes[i] != cast(ubyte) ch)
+            return VaultCoreStatus.invalidInput;
 
     if (!r.take(cast(size_t)payloadCipherLength, header.payloadCipher))
         return VaultCoreStatus.corruptData;
@@ -318,23 +332,23 @@ ubyte[] buildWrapAd(
     scope const ubyte[16] vaultId
 ) @safe
 {
-    const nsBytes = cast(const(ubyte)[]) ns.serialize();
-    enum ubyte[] domain = cast(ubyte[]) "credentials-d:wrap:v1";
+    const nsText = ns.serialize();
+    enum string domain = "credentials-d:wrap:v1";
 
     const total =
         domain.length + 2 + 2 + 4 + 8 +
-        salt.length + vaultId.length + nsBytes.length;
+        salt.length + vaultId.length + nsText.length;
 
     auto result = new ubyte[total];
     Writer w = Writer(result, 0);
-    assert(w.put(domain));
+    assert(w.putAscii(domain));
     assert(w.putU16(formatVersion));
-    assert(w.putU16(cast(ushort)nsBytes.length));
+    assert(w.putU16(cast(ushort)nsText.length));
     assert(w.putU32(ops));
     assert(w.putU64(memBytes));
     assert(w.put(salt[]));
     assert(w.put(vaultId[]));
-    assert(w.put(nsBytes));
+    assert(w.putAscii(nsText));
     assert(w.pos == result.length);
     return result;
 }
@@ -344,20 +358,43 @@ ubyte[] buildPayloadAd(
     scope const ubyte[16] vaultId
 ) @safe
 {
-    const nsBytes = cast(const(ubyte)[]) ns.serialize();
-    enum ubyte[] domain = cast(ubyte[]) "credentials-d:payload:v1";
+    const nsText = ns.serialize();
+    enum string domain = "credentials-d:payload:v1";
 
     const total =
-        domain.length + 2 + vaultId.length + nsBytes.length;
+        domain.length + 2 + vaultId.length + nsText.length;
 
     auto result = new ubyte[total];
     Writer w = Writer(result, 0);
-    assert(w.put(domain));
+    assert(w.putAscii(domain));
     assert(w.putU16(formatVersion));
     assert(w.put(vaultId[]));
-    assert(w.put(nsBytes));
+    assert(w.putAscii(nsText));
     assert(w.pos == result.length);
     return result;
+}
+
+bool deriveKekBytes(
+    scope const(ubyte)[] bytes,
+    scope const ubyte[pwhashSaltBytes] salt,
+    uint ops,
+    ulong memBytes,
+    ref ubyte[vaultKeyBytes] kek
+) @trusted
+{
+    const(char)* passwordPtr =
+        bytes.length == 0 ? null : cast(const(char)*)bytes.ptr;
+
+    return crypto_pwhash(
+        kek.ptr,
+        kek.length,
+        passwordPtr,
+        bytes.length,
+        salt.ptr,
+        ops,
+        cast(size_t)memBytes,
+        crypto_pwhash_alg_argon2id13()
+    ) == 0;
 }
 
 bool deriveKek(
@@ -374,19 +411,13 @@ bool deriveKek(
     bool success;
     passphrase.withBytes((scope const(ubyte)[] bytes) @safe
     {
-        const(char)* passwordPtr =
-            bytes.length == 0 ? null : cast(const(char)*)bytes.ptr;
-
-        success = crypto_pwhash(
-            kek.ptr,
-            kek.length,
-            passwordPtr,
-            bytes.length,
-            salt.ptr,
+        success = deriveKekBytes(
+            bytes,
+            salt,
             ops,
-            cast(size_t)memBytes,
-            crypto_pwhash_alg_argon2id13()
-        ) == 0;
+            memBytes,
+            kek
+        );
     });
 
     return success;
@@ -682,20 +713,20 @@ ubyte[] serializeImage(
     scope const(ubyte)[] payloadCipher
 ) @safe
 {
-    const nsBytes = cast(const(ubyte)[]) ns.serialize();
+    const nsText = ns.serialize();
 
     if (payloadCipher.length > maxPayloadBytes + aeadTagBytes)
         return null;
 
     const total =
-        fixedHeaderBytes + nsBytes.length + payloadCipher.length;
+        fixedHeaderBytes + nsText.length + payloadCipher.length;
 
     auto result = new ubyte[total];
     Writer w = Writer(result, 0);
 
     assert(w.put(vaultMagic[]));
     assert(w.putU16(formatVersion));
-    assert(w.putU16(cast(ushort)nsBytes.length));
+    assert(w.putU16(cast(ushort)nsText.length));
     assert(w.putU16(kdfArgon2id));
     assert(w.putU16(0));
     assert(w.putU32(header.ops));
@@ -706,7 +737,7 @@ ubyte[] serializeImage(
     assert(w.put(header.wrappedKey[]));
     assert(w.put(header.payloadNonce[]));
     assert(w.putU64(payloadCipher.length));
-    assert(w.put(nsBytes));
+    assert(w.putAscii(nsText));
     assert(w.put(payloadCipher));
     assert(w.pos == result.length);
 
@@ -742,7 +773,7 @@ int hexNibble(char c) @nogc nothrow @safe
 
 string locatorOf(scope const ubyte[16] id) @safe
 {
-    enum char[] digits = "0123456789abcdef";
+    enum string digits = "0123456789abcdef";
     char[32] chars;
 
     foreach (i; 0 .. 16)
@@ -825,7 +856,7 @@ VaultCoreStatus createEmptyVaultImage(
     CredentialNamespace ns,
     scope ref const SecretBuffer passphrase,
     out ubyte[] image
-) @safe
+) @trusted
 {
     image = null;
 
