@@ -467,7 +467,7 @@ void main(string[] args)
     enforce(
         selectPrimaryDevice(
             devices,
-            selectedDeviceA,
+            options.deviceA,
             deviceAInfo,
             selectedDeviceA
         ),
