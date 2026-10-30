@@ -143,6 +143,38 @@ GUI/render thread.
 
 See [ADR 0005](docs/adr/0005-linux-secret-service.md).
 
+### macOS Data Protection Keychain
+
+macOS application consumers can opt into:
+
+```text
+credentials-d:macos-data-protection
+```
+
+and create:
+
+```d
+import credentials : CredentialNamespace;
+import credentials.backend.macos :
+    MacOSDataProtectionCredentialStore;
+
+CredentialNamespace ns;
+assert(CredentialNamespace.tryParse("org.example.application", ns));
+
+auto store = new MacOSDataProtectionCredentialStore(ns);
+```
+
+Every operation explicitly targets the Data Protection Keychain, disables
+synchronization, and new records use
+`kSecAttrAccessibleWhenUnlockedThisDeviceOnly`. Missing signing/keychain
+entitlements fail closed; the backend never switches to the legacy file-based
+keychain.
+
+A final production qualification must run the integration fixture inside the
+consumer's properly signed/provisioned macOS application context.
+
+See [ADR 0006](docs/adr/0006-macos-data-protection-keychain.md).
+
 ### Windows Credential Manager
 
 Windows consumers can opt into:
