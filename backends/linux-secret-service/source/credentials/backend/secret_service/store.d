@@ -626,18 +626,29 @@ final class LinuxSecretServiceStore : CredentialStore
 
         secret.withBytes((scope const(ubyte)[] bytes) @safe
         {
-            const(char)* data = bytes.length == 0
-                ? "".ptr
-                : cast(const(char)*) bytes.ptr;
-
-            result = secret_value_new(
-                data,
-                cast(gssize) bytes.length,
-                binaryContentType.ptr
-            );
+            result = makeSecretValueFromBytes(bytes);
         });
 
         return result;
+    }
+
+    /**
+     * Narrow trusted conversion from a scoped D byte view to libsecret's
+     * explicit-length C API. secret_value_new copies the bytes before return.
+     */
+    private static SecretValue* makeSecretValueFromBytes(
+        scope const(ubyte)[] bytes
+    ) @trusted
+    {
+        const(char)* data = bytes.length == 0
+            ? "".ptr
+            : cast(const(char)*) bytes.ptr;
+
+        return secret_value_new(
+            data,
+            cast(gssize) bytes.length,
+            binaryContentType.ptr
+        );
     }
 
     private static void freeItemList(GList* items) @trusted
