@@ -19,3 +19,5 @@ subPackage "backends/linux-secret-service"
 subPackage "backends/macos-data-protection"
 
 subPackage "backends/encrypted-vault"
+
+subPackage "backends/fido2-vault"
