@@ -2,18 +2,37 @@ module app;
 
 import credentials :
     CredentialHandle,
+    CredentialNamespace,
     CredentialStatus,
     CredentialStore,
     MemoryCredentialStore,
     SecretBuffer,
-    StoreConcurrency;
+    StoreBlocking,
+    StoreConcurrency,
+    StoreMobility,
+    StoreProtection,
+    StoreUnlockModel;
 import credentials.testing : MockCredentialStore;
+
+private CredentialNamespace testNamespace()
+{
+    CredentialNamespace ns;
+    assert(CredentialNamespace.tryParse("org.example.credentials-contract", ns));
+    return ns;
+}
 
 private void runStoreContract(CredentialStore store)
 {
-    assert(store.capabilities.concurrency == StoreConcurrency.threadConfined);
+    assert(store.credentialNamespace == testNamespace());
 
-    auto first = new SecretBuffer(cast(const(ubyte)[]) "contract:first");
+    const capabilities = store.capabilities;
+    assert(capabilities.protection == StoreProtection.memoryOnly);
+    assert(capabilities.unlockModel == StoreUnlockModel.none);
+    assert(capabilities.mobility == StoreMobility.processOnly);
+    assert(capabilities.blocking == StoreBlocking.nonBlocking);
+    assert(capabilities.concurrency == StoreConcurrency.threadConfined);
+
+    auto first = SecretBuffer(cast(const(ubyte)[]) "contract:first");
 
     CredentialHandle handle;
     assert(store.store(first, handle) == CredentialStatus.ok);
@@ -31,7 +50,8 @@ private void runStoreContract(CredentialStore store)
     }) == CredentialStatus.ok);
     assert(visits == 1);
 
-    auto replacement = new SecretBuffer(cast(const(ubyte)[]) "contract:second");
+    auto replacement =
+        SecretBuffer(cast(const(ubyte)[]) "contract:second");
     assert(store.replace(parsed, replacement) == CredentialStatus.ok);
 
     assert(store.acquire(parsed, (scope const(ubyte)[] bytes) @safe
@@ -56,21 +76,39 @@ private void runStoreContract(CredentialStore store)
 
 void main()
 {
-    runStoreContract(new MemoryCredentialStore);
-    runStoreContract(new MockCredentialStore);
+    auto ns = testNamespace();
 
-    auto mock = new MockCredentialStore;
-    auto secret = new SecretBuffer(cast(const(ubyte)[]) "locked-test");
+    auto memory = new MemoryCredentialStore(ns);
+    scope(exit) memory.clearAll();
+    runStoreContract(memory);
+
+    auto mock = new MockCredentialStore(ns);
+    scope(exit) mock.clearAll();
+    runStoreContract(mock);
+
+    auto locked = new MockCredentialStore(ns);
+    scope(exit) locked.clearAll();
+
+    auto secret = SecretBuffer(cast(const(ubyte)[]) "locked-test");
 
     CredentialHandle handle;
-    assert(mock.store(secret, handle) == CredentialStatus.ok);
+    assert(locked.store(secret, handle) == CredentialStatus.ok);
 
-    mock.forcedAcquireStatus = CredentialStatus.locked;
+    locked.forcedAcquireStatus = CredentialStatus.locked;
 
     bool called;
-    assert(mock.acquire(handle, (scope const(ubyte)[]) @safe
+    assert(locked.acquire(handle, (scope const(ubyte)[]) @safe
     {
         called = true;
     }) == CredentialStatus.locked);
     assert(!called);
+
+    auto unavailable = new MockCredentialStore(ns);
+    scope(exit) unavailable.clearAll();
+    unavailable.forcedStoreStatus = CredentialStatus.unavailable;
+
+    CredentialHandle unavailableHandle;
+    assert(unavailable.store(secret, unavailableHandle) ==
+        CredentialStatus.unavailable);
+    assert(!unavailableHandle.valid);
 }
