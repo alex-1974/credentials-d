@@ -706,44 +706,45 @@ private CredentialStatus withNativePin(
 
     pin.withBytes((scope const(ubyte)[] bytes) @safe
     {
-        if (bytes.length == 0 || bytes.length > 255)
-        {
-            status = CredentialStatus.invalidInput;
-            return;
-        }
-
-        foreach (ubyte value; bytes)
-        {
-            if (value == 0)
-            {
-                status = CredentialStatus.invalidInput;
-                return;
-            }
-        }
-
-        auto buffer =
-            cast(char*)malloc(bytes.length + 1);
-        if (buffer is null)
-            onOutOfMemoryError();
-
-        scope(exit)
-        {
-            foreach (i; 0 .. bytes.length + 1)
-                volatileStore(
-                    cast(ubyte*)buffer + i,
-                    cast(ubyte)0
-                );
-            free(buffer);
-        }
-
-        buffer[0 .. bytes.length] =
-            cast(const(char)[])bytes[];
-        buffer[bytes.length] = '\0';
-
-        status = operation(buffer);
+        status = runWithNativePinBytes(bytes, operation);
     });
 
     return status;
+}
+
+private CredentialStatus runWithNativePinBytes(
+    scope const(ubyte)[] bytes,
+    scope NativePinOperation operation
+) @trusted
+{
+    if (operation is null ||
+        bytes.length == 0 ||
+        bytes.length > 255)
+        return CredentialStatus.invalidInput;
+
+    foreach (ubyte value; bytes)
+        if (value == 0)
+            return CredentialStatus.invalidInput;
+
+    auto buffer = cast(char*)malloc(bytes.length + 1);
+    if (buffer is null)
+        onOutOfMemoryError();
+
+    scope(exit)
+    {
+        foreach (i; 0 .. bytes.length + 1)
+            volatileStore(
+                cast(ubyte*)buffer + i,
+                cast(ubyte)0
+            );
+        free(buffer);
+    }
+
+    foreach (i, value; bytes)
+        buffer[i] = cast(char)value;
+    buffer[bytes.length] = '\0';
+
+    return operation(buffer);
 }
 
 private string copyCString(const(char)* value) @trusted
