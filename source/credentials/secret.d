@@ -65,7 +65,7 @@ final class SecretBuffer
      * The returned view must not outlive the callback. Under DIP1000 the
      * `scope` parameter lets the compiler reject straightforward escapes.
      */
-    void withBytes(scope void delegate(scope const(ubyte)[]) @safe visitor) @safe
+    void withBytes(scope void delegate(scope const(ubyte)[]) @safe visitor) scope @safe
     in (visitor !is null)
     {
         visitor(bytes_);
@@ -77,7 +77,7 @@ final class SecretBuffer
      * This is a best-effort process-memory hygiene operation, not a claim of
      * physical secure erasure.
      */
-    void clear() @safe
+    void clear() scope @safe
     {
         foreach (ref value; bytes_)
             value = 0;
@@ -98,7 +98,7 @@ final class SecretBuffer
      * This operation is intentionally package-private: consumers receive
      * plaintext only through `withBytes`.
      */
-    package(credentials) ubyte[] duplicateBytes() const @safe
+    package(credentials) ubyte[] duplicateBytes() const scope @safe
     {
         auto copy = new ubyte[bytes_.length];
         copy[] = bytes_[];
