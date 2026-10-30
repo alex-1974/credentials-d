@@ -46,6 +46,7 @@ void main()
 
     CredentialHandle handle;
     const stored = store.store(first, handle);
+    writeln("macOS DPK initial store status code: ", cast(int) stored);
 
     // GitHub-hosted macOS runners are not provisioned with the application's
     // production keychain-access entitlement. In that execution context the
