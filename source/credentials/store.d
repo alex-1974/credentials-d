@@ -27,6 +27,7 @@ enum CredentialStatus
     tooLarge,
     ambiguous,
     corruptData,
+    commitUncertain,
     invalidInput,
     backendFailure
 }
