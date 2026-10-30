@@ -41,7 +41,7 @@ final class VaultSession
         unlocked_ = true;
     }
 
-    void clear() @safe
+    void clear() scope @safe
     {
         key_.clear();
         vaultId_[] = 0;
@@ -79,7 +79,7 @@ final class VaultSession
         key_.withBytes(visitor);
     }
 
-    ~this() @safe
+    ~this() scope @safe
     {
         clear();
     }
