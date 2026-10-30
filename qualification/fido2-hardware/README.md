@@ -44,6 +44,13 @@ DC=dmd ./run.sh \
 
 The operator will be asked to touch the key multiple times.
 
+Older PIN-protected CTAP2.0 authenticators may additionally require the PIN
+while creating the qualification credential. The runner detects
+`interactionRequired`, prompts once, and retries MakeCredential with the PIN.
+That PIN is only for credential creation; the subsequent user-presence
+hmac-secret derivations remain PIN-less and must return an assertion without
+the UV flag.
+
 The run proves:
 
 - non-resident hmac-secret credential enrollment;
@@ -64,8 +71,10 @@ DC=dmd ./run.sh \
   --device-a /dev/hidrawN
 ```
 
-The launcher disables terminal echo before the D process reads the PIN from
-stdin. The PIN is never placed in argv or the receipt.
+The launcher disables terminal echo for every interactive qualification run,
+because a PIN can also be required by older CTAP2.0 authenticators during the
+user-presence MakeCredential step. The PIN is never placed in argv or the
+receipt.
 
 The UV run additionally proves:
 
