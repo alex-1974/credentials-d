@@ -36,6 +36,7 @@ version (linux)
 
 enum int defaultFido2TimeoutMilliseconds = 30_000;
 enum size_t maximumFido2Devices = 64;
+private enum string compatibilityUserName = "credentials-d";
 
 /**
  * Non-secret runtime discovery metadata.
@@ -538,7 +539,7 @@ private CredentialStatus enrollImpl(
             cred,
             userId.ptr,
             userId.length,
-            null,
+            cast(const(char)*)toStringz(compatibilityUserName),
             null,
             null
         )) != FIDO_OK)
