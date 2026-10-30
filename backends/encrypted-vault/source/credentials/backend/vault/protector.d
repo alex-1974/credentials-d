@@ -65,10 +65,9 @@ struct VaultUnlockEnvelope
         return kind_;
     }
 
-    @property const(ubyte)[] protectorBinding() const scope
-        @nogc nothrow @safe
+    @property ubyte[] protectorBinding() const @safe
     {
-        return binding_;
+        return binding_.dup;
     }
 
     @property bool valid() const scope @nogc nothrow @safe
@@ -420,7 +419,7 @@ private bool decryptVaultKey(
 
 private ubyte[] buildEnvelopeAd(
     CredentialNamespace ns,
-    string kind,
+    scope string kind,
     scope const(ubyte)[] binding,
     scope const ubyte[16] vaultId,
     scope const ubyte[protectorSaltBytes] salt
