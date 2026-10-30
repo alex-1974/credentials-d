@@ -14,6 +14,7 @@ import credentials :
     StoreUnlockModel;
 import credentials.backend.macos :
     MacOSDataProtectionCredentialStore;
+import std.stdio : writeln;
 
 private CredentialNamespace namespaceOf(string value)
 {
@@ -54,6 +55,7 @@ void main()
         stored == CredentialStatus.unavailable)
     {
         assert(!handle.valid);
+        writeln("macOS DPK qualification: fail-closed without usable entitlement context");
         return;
     }
 
@@ -124,4 +126,6 @@ void main()
         }
     ) == CredentialStatus.notFound);
     assert(!calledAfterDelete);
+
+    writeln("macOS DPK qualification: full native integration PASS");
 }
