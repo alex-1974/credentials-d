@@ -9,3 +9,5 @@ targetType "library"
 sourcePaths "source"
 
 toolchainRequirements frontend=">=2.111.0"
+
+subPackage "backends/windows"
