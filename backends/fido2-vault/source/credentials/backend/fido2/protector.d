@@ -598,6 +598,9 @@ private CredentialStatus deriveImpl(
     if (!secureRandomBytes(clientDataHash[]))
         return CredentialStatus.backendFailure;
 
+    const bindingRpId = binding.rpId;
+    const bindingCredentialId = binding.credentialId;
+
     if ((rc = fido_assert_set_clientdata_hash(
             assertion,
             clientDataHash.ptr,
@@ -605,12 +608,12 @@ private CredentialStatus deriveImpl(
         )) != FIDO_OK ||
         (rc = fido_assert_set_rp(
             assertion,
-            cast(const(char)*)toStringz(binding.rpId)
+            cast(const(char)*)toStringz(bindingRpId)
         )) != FIDO_OK ||
         (rc = fido_assert_allow_cred(
             assertion,
-            binding.credentialId.ptr,
-            binding.credentialId.length
+            bindingCredentialId.ptr,
+            bindingCredentialId.length
         )) != FIDO_OK ||
         (rc = fido_assert_set_extensions(
             assertion,
