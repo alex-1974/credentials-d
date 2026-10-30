@@ -1,0 +1,74 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - develop
+  pull_request:
+    branches:
+      - develop
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  compiler-gate:
+    name: Fast / ${{ matrix.compiler }}
+    runs-on: ubuntu-24.04
+
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler:
+          - dmd-2.111.0
+          - ldc-1.41.0
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Install D compiler
+        uses: dlang-community/setup-dlang@v2
+        with:
+          compiler: ${{ matrix.compiler }}
+
+      - name: Compiler versions
+        shell: bash
+        run: |
+          echo "DC=$DC"
+          "$DC" --version
+          dub --version
+
+      - name: Package policy
+        shell: bash
+        run: |
+          if grep -nE '^[[:space:]]*dflags.*-preview=' dub.sdl; then
+            echo "Preview compiler switches must not be package-wide dflags."
+            false
+          fi
+
+      - name: Unit tests
+        shell: bash
+        run: dub test --compiler="$DC" --force
+
+      - name: Unit tests with DIP1000
+        shell: bash
+        run: DFLAGS="-unittest -preview=dip1000" dub test --compiler="$DC" --force
+
+      - name: External consumer smoke
+        shell: bash
+        run: dub run --root=tests/consumer --compiler="$DC" --force
+
+      - name: External consumer smoke with DIP1000
+        shell: bash
+        run: DFLAGS="-preview=dip1000" dub run --root=tests/consumer --compiler="$DC" --force
+
+      - name: Documentation build
+        if: startsWith(matrix.compiler, 'dmd-')
+        shell: bash
+        run: dub build --build=docs --compiler="$DC" --force
+
+      - name: Release build
+        shell: bash
+        run: dub build --build=release --compiler="$DC" --force
