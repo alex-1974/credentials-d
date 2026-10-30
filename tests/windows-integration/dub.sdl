@@ -5,5 +5,4 @@ license "MIT"
 targetType "executable"
 sourcePaths "source"
 
-dependency "credentials-d" path="../.."
-dependency "windows" path="../../backends/windows"
+dependency "credentials-d:windows" path="../.."
