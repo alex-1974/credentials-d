@@ -23,8 +23,10 @@ private CredentialNamespace namespaceOf(string value)
     return ns;
 }
 
-void main()
+void main(string[] args)
 {
+    const allowUnqualifiedHost =
+        args.length == 2 && args[1] == "--allow-unqualified-host";
     auto ns = namespaceOf("org.alex1974.credentials-integration");
     auto store = new MacOSDataProtectionCredentialStore(ns);
 
@@ -52,11 +54,16 @@ void main()
     // production keychain-access entitlement. In that execution context the
     // security property under test is fail-closed behavior with no legacy
     // keychain fallback.
-    if (stored == CredentialStatus.permissionDenied ||
-        stored == CredentialStatus.unavailable)
+    if (allowUnqualifiedHost &&
+        (stored == CredentialStatus.permissionDenied ||
+         stored == CredentialStatus.unavailable ||
+         stored == CredentialStatus.invalidInput))
     {
         assert(!handle.valid);
-        writeln("macOS DPK qualification: fail-closed without usable entitlement context");
+        writeln(
+            "macOS DPK qualification: unqualified hosted CLI failed closed; ",
+            "signed app-like qualification is still required"
+        );
         return;
     }
 
