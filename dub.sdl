@@ -1,0 +1,11 @@
+name "credentials-d"
+description "Secure credential storage for D applications"
+authors "Alexander Bernardi"
+copyright "Copyright © 2026 Alexander Bernardi"
+license "MIT"
+homepage "https://github.com/alex-1974/credentials-d"
+
+targetType "library"
+sourcePaths "source"
+
+toolchainRequirements frontend=">=2.111.0"
