@@ -1,0 +1,8 @@
+name "credentials-d-consumer"
+description "External consumer smoke test for credentials-d"
+license "MIT"
+
+targetType "executable"
+sourcePaths "source"
+
+dependency "credentials-d" path="../.."
