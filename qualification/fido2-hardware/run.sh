@@ -80,7 +80,7 @@ dub build \
 BUILD_STATUS=${PIPESTATUS[0]}
 
 if [[ "$BUILD_STATUS" -ne 0 ]]; then
-  restore_tty
+  cleanup
   trap - EXIT INT TERM
   {
     echo "build_exit_code=$BUILD_STATUS"
