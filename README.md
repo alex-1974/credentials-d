@@ -43,15 +43,16 @@ It does not aim to provide:
 
 Credentials are security-sensitive data.
 
-The design should make unsafe handling difficult rather than merely documenting
-that consumers should be careful. In particular, the public API should avoid
-requiring secrets to become ordinary GC-managed strings, should not make
-formatting/logging of secrets convenient, and should keep persistence behind an
-explicit store boundary.
+The design makes unsafe handling difficult rather than merely documenting that
+consumers should be careful. Owned secret plaintext lives in non-GC memory,
+`SecretBuffer` is non-copyable, plaintext exposure is explicit and scoped, and
+zeroization uses compiler-recognized volatile stores. Persistence remains behind
+an explicit store boundary.
 
 Platform credential stores are expected to be the normal persistence mechanism.
 An encrypted file vault is a possible additional backend, not the definition of
-the library.
+the library. Backend failure never silently downgrades to plaintext or another
+weaker store.
 
 No cryptographic backend decision has been made. Botan, libsodium or another
 implementation must be qualified against the exact narrow primitive set needed
@@ -70,12 +71,16 @@ The first public contract separates persistable handles from plaintext:
 ```d
 import credentials :
     CredentialHandle,
+    CredentialNamespace,
     CredentialStatus,
     MemoryCredentialStore,
     SecretBuffer;
 
-auto store = new MemoryCredentialStore;
-auto secret = new SecretBuffer(cast(const(ubyte)[]) "token");
+CredentialNamespace ns;
+assert(CredentialNamespace.tryParse("org.example.application", ns));
+
+auto store = new MemoryCredentialStore(ns);
+auto secret = SecretBuffer(cast(const(ubyte)[]) "token");
 
 CredentialHandle handle;
 assert(store.store(secret, handle) == CredentialStatus.ok);
@@ -88,19 +93,22 @@ assert(store.acquire(handle, (scope const(ubyte)[] bytes) @safe
 assert(store.remove(handle) == CredentialStatus.ok);
 ```
 
-`CredentialHandle.serialize()` is intended for normal application settings.
-Credential plaintext is not.
+`CredentialHandle.serialize()` and `CredentialNamespace` are non-secret and
+may be persisted in ordinary application settings. Credential plaintext may
+not.
 
-`SecretBuffer` currently uses GC-managed mutable storage and best-effort
-overwrite on `clear()`; this is deliberately **not** documented as guaranteed
-secure zeroization. The representation can be strengthened later without
-changing the consumer-facing acquisition contract.
+`SecretBuffer` owns a non-GC allocation, cannot be copied, and clears its owned
+allocation using `core.volatile.volatileStore` before release. This guarantees
+zeroization of that allocation against dead-store elimination; it does not
+erase the caller's source buffer or copies made by external code.
 
 `MemoryCredentialStore` is deterministic, ephemeral and thread-confined. It is
-a contract/reference backend, not a persistent security mechanism.
+a contract/reference backend, not a persistent security mechanism. It requires
+an explicit namespace and rejects handles from another store instance.
 
-See [ADR 0002](docs/adr/0002-credential-store-public-contract.md) for the API
-semantics.
+See [ADR 0002](docs/adr/0002-credential-store-public-contract.md) for the
+original API semantics and [ADR 0003](docs/adr/0003-core-security-hardening.md)
+for the hardened ownership and backend contract.
 
 ## Compatibility baseline
 
