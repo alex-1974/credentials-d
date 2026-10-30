@@ -68,6 +68,7 @@ enum StoreMobility
 {
     processOnly,
     localDevice,
+    portableFile,
     mayRoam,
     synchronizable
 }
