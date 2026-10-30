@@ -227,7 +227,7 @@ final class WindowsCredentialStore : CredentialStore
         auto target = nativeTarget(handle.serialize());
         CREDENTIALW* credential;
 
-        if (!CredReadW(target.ptr, CRED_TYPE_GENERIC, 0, &credential))
+        if (!CredReadW(target, CRED_TYPE_GENERIC, 0, &credential))
             return mapReadDeleteError(GetLastError());
 
         if (credential is null)
@@ -289,7 +289,7 @@ final class WindowsCredentialStore : CredentialStore
 
         auto target = nativeTarget(handle.serialize());
 
-        if (CredDeleteW(target.ptr, CRED_TYPE_GENERIC, 0))
+        if (CredDeleteW(target, CRED_TYPE_GENERIC, 0))
             return CredentialStatus.ok;
 
         return mapReadDeleteError(GetLastError());
@@ -306,22 +306,7 @@ final class WindowsCredentialStore : CredentialStore
 
         secret.withBytes((scope const(ubyte)[] bytes) @safe
         {
-            CREDENTIALW credential;
-            credential.Type = CRED_TYPE_GENERIC;
-            credential.TargetName = cast(LPWSTR) target.ptr;
-            credential.CredentialBlobSize = cast(DWORD) bytes.length;
-            credential.CredentialBlob =
-                cast(LPBYTE) bytes.ptr;
-            credential.Persist = CRED_PERSIST_LOCAL_MACHINE;
-
-            if (CredWriteW(&credential, 0))
-            {
-                result = CredentialStatus.ok;
-            }
-            else
-            {
-                result = mapWriteError(GetLastError());
-            }
+            result = writeNative(target, bytes);
         });
 
         return result;
@@ -338,7 +323,7 @@ final class WindowsCredentialStore : CredentialStore
         auto target = nativeTarget(serializedHandle);
         CREDENTIALW* credential;
 
-        if (!CredReadW(target.ptr, CRED_TYPE_GENERIC, 0, &credential))
+        if (!CredReadW(target, CRED_TYPE_GENERIC, 0, &credential))
             return mapReadDeleteError(GetLastError());
 
         if (credential is null)
@@ -355,12 +340,36 @@ final class WindowsCredentialStore : CredentialStore
         return handle.valid && handle.hasStorePrefix(handlePrefix_);
     }
 
-    private static const(wchar)[] nativeTarget(string serializedHandle)
-        @safe
+    private static const(wchar)* nativeTarget(string serializedHandle)
+        @trusted
     {
         // TargetName is non-secret. Keep the backend prefix stable and avoid
         // user/profile names or OAuth metadata.
         return toUTF16z("credentials-d:" ~ serializedHandle);
+    }
+
+    /**
+     * Narrow trusted WinCred write boundary.
+     *
+     * The caller owns `target` for this call and `bytes` is scoped to the
+     * explicit SecretBuffer visitor. WinCred consumes both synchronously.
+     */
+    private static CredentialStatus writeNative(
+        const(wchar)* target,
+        scope const(ubyte)[] bytes
+    ) @trusted
+    {
+        CREDENTIALW credential;
+        credential.Type = CRED_TYPE_GENERIC;
+        credential.TargetName = cast(LPWSTR) target;
+        credential.CredentialBlobSize = cast(DWORD) bytes.length;
+        credential.CredentialBlob = cast(LPBYTE) bytes.ptr;
+        credential.Persist = CRED_PERSIST_LOCAL_MACHINE;
+
+        if (CredWriteW(&credential, 0))
+            return CredentialStatus.ok;
+
+        return mapWriteError(GetLastError());
     }
 
     private static bool queryLocalPersistence() @trusted
