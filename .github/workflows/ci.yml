@@ -64,6 +64,33 @@ jobs:
         shell: bash
         run: DFLAGS="-preview=dip1000" dub run --root=tests/consumer --compiler="$DC" --force
 
+      - name: CredentialStore contract
+        shell: bash
+        run: dub run --root=tests/store-contract --compiler="$DC" --force
+
+      - name: CredentialStore contract with DIP1000
+        shell: bash
+        run: DFLAGS="-preview=dip1000" dub run --root=tests/store-contract --compiler="$DC" --force
+
+      - name: SecretBuffer negative compile contracts
+        shell: bash
+        run: |
+          if dub build \
+              --root=tests/compile-negative/secret-implicit-string \
+              --compiler="$DC" \
+              --force; then
+            echo "Expected implicit SecretBuffer -> string conversion to fail."
+            false
+          fi
+
+          if DFLAGS="-preview=dip1000" dub build \
+              --root=tests/compile-negative/secret-scope-escape \
+              --compiler="$DC" \
+              --force; then
+            echo "Expected scoped secret plaintext escape to fail under DIP1000."
+            false
+          fi
+
       - name: Documentation build
         if: startsWith(matrix.compiler, 'dmd-')
         shell: bash
