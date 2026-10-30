@@ -2,7 +2,8 @@ module app;
 
 version (linux):
 
-import core.sys.posix.unistd : getpid;
+import core.sys.posix.termios : ECHO, TCSANOW, tcgetattr, tcsetattr, termios;
+import core.sys.posix.unistd : STDIN_FILENO, getpid, isatty;
 import core.volatile : volatileStore;
 import credentials :
     CredentialHandle,
@@ -239,11 +240,50 @@ private void wipe(scope ubyte[] bytes) nothrow @nogc @trusted
 private SecretBuffer readPin()
 {
     stderr.writeln(
-        "ACTION_REQUIRED=Enter authenticator PIN on stdin. The PIN is not printed or included in receipts."
+        "ACTION_REQUIRED=Enter authenticator PIN (input hidden). The PIN is not printed or included in receipts."
     );
     stderr.flush();
 
+    enforce(
+        isatty(STDIN_FILENO) == 1,
+        "protected PIN input requires an interactive terminal"
+    );
+
+    termios original;
+    enforce(
+        tcgetattr(STDIN_FILENO, &original) == 0,
+        "unable to read terminal settings for protected PIN input"
+    );
+
+    auto hidden = original;
+    hidden.c_lflag &= ~ECHO;
+
+    enforce(
+        tcsetattr(STDIN_FILENO, TCSANOW, &hidden) == 0,
+        "unable to disable terminal echo for protected PIN input"
+    );
+
+    bool restored;
+    scope(exit)
+    {
+        if (!restored)
+        {
+            tcsetattr(STDIN_FILENO, TCSANOW, &original);
+            stderr.writeln();
+        }
+    }
+
     auto line = stdin.readln();
+
+    const restoreResult =
+        tcsetattr(STDIN_FILENO, TCSANOW, &original);
+    restored = true;
+    stderr.writeln();
+
+    enforce(
+        restoreResult == 0,
+        "unable to restore terminal settings after protected PIN input"
+    );
     enforce(line.length != 0, "PIN input missing");
 
     scope(exit)
