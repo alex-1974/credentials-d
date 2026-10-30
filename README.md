@@ -115,6 +115,34 @@ for the hardened ownership and backend contract.
 Native credential stores are explicit DUB subpackages. The core package never
 silently selects a backend or falls back to weaker persistence.
 
+### Linux Secret Service
+
+Linux desktop consumers can opt into:
+
+```text
+credentials-d:linux-secret-service
+```
+
+and create:
+
+```d
+import credentials : CredentialNamespace;
+import credentials.backend.secret_service : LinuxSecretServiceStore;
+
+CredentialNamespace ns;
+assert(CredentialNamespace.tryParse("org.example.application", ns));
+
+auto store = new LinuxSecretServiceStore(ns);
+```
+
+The backend uses libsecret with one retained Secret Service session, binary
+`SecretValue` payloads, opaque namespace/locator attributes, all-result lookup
+with ambiguity rejection, and explicit `unavailable` behavior when no service
+is reachable. Synchronous operations may block or prompt and must not run on a
+GUI/render thread.
+
+See [ADR 0005](docs/adr/0005-linux-secret-service.md).
+
 ### Windows Credential Manager
 
 Windows consumers can opt into:
