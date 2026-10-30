@@ -78,6 +78,14 @@ jobs:
             false
           fi
 
+          if dub build \
+              --root=tests/compile-negative/secret-format \
+              --compiler="$DC" \
+              --force; then
+            echo "Expected SecretBuffer formatting to fail."
+            false
+          fi
+
       - name: Release build
         shell: bash
         run: dub build --build=release --compiler="$DC" --force
