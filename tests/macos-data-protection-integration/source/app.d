@@ -56,6 +56,10 @@ void main()
     // by Security.framework; all accepted outcomes must still be fail-closed.
     const hostedUnprovisioned =
         environment.get("CREDENTIALS_D_MACOS_UNPROVISIONED_CI", "") == "1";
+    const requireFull =
+        environment.get("CREDENTIALS_D_MACOS_REQUIRE_FULL", "") == "1";
+
+    assert(!(hostedUnprovisioned && requireFull));
 
     if (hostedUnprovisioned &&
         (stored == CredentialStatus.permissionDenied ||
@@ -71,16 +75,20 @@ void main()
 
     // Outside the explicitly marked hosted-CI context, errSecParam /
     // invalidInput is never accepted as an entitlement substitute.
-    if (stored == CredentialStatus.permissionDenied ||
-        stored == CredentialStatus.unavailable)
+    if (!requireFull &&
+        (stored == CredentialStatus.permissionDenied ||
+         stored == CredentialStatus.unavailable))
     {
         assert(!handle.valid);
         writeln("macOS DPK qualification: fail-closed without usable entitlement context");
         return;
     }
 
-    // A suitably signed execution environment gets the complete integration
-    // qualification below.
+    if (requireFull)
+        writeln("macOS DPK qualification: strict provisioned-host mode");
+
+    // A suitably signed execution environment, and every strict production
+    // qualification run, must get the complete integration below.
     assert(stored == CredentialStatus.ok);
     assert(handle.valid);
 
