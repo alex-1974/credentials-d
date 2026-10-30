@@ -101,14 +101,21 @@ authenticated unwrap
     │
 random 256-bit vault key
     │
-    ├── credential record AEAD
-    ├── credential record AEAD
-    └── credential record AEAD
+    ▼
+one authenticated vault payload
+    └── complete record table
 ```
 
-The passphrase-derived key does not directly encrypt each record. This permits
-a future passphrase change to re-wrap the vault key without re-encrypting every
-credential.
+The passphrase-derived key does not directly encrypt credential data. This
+permits a future passphrase change to re-wrap the vault key without
+re-encrypting the payload.
+
+Version 1 deliberately authenticates the complete record table as one AEAD
+payload rather than authenticating records independently. Independent record
+AEAD would not by itself detect removal of an entire otherwise-valid record;
+a separate authenticated manifest would then be required. Credential vaults are
+small, so whole-payload authentication is simpler, closes that integrity gap,
+and avoids unnecessary format machinery.
 
 ## Password KDF
 
@@ -136,16 +143,22 @@ length, or allocation size.
 
 Use XChaCha20-Poly1305-IETF.
 
-Every encryption uses a fresh random 192-bit nonce.
+Each vault-key wrap and each payload encryption uses a fresh random 192-bit
+nonce.
 
 Decryption must never expose plaintext before authentication succeeds.
 
-Authenticated associated data includes, at minimum:
+The wrapped-key AEAD authenticates the format/KDF/vault identity needed to
+derive and select the key. The payload AEAD authenticates, at minimum:
 
 - format domain/version;
 - vault identifier;
-- record identifier;
-- record type/version.
+- credential namespace;
+- encoded payload length/domain.
+
+The complete record table lives inside that authenticated ciphertext, so
+record count, identifiers, ordering, deletion and secret lengths cannot be
+modified independently without authentication failure.
 
 ## File format
 
@@ -159,8 +172,9 @@ Required structural data includes:
 - random KDF salt;
 - authenticated wrapped vault key;
 - random vault identifier;
-- bounded record table;
-- per-record nonce, ciphertext and authentication tag.
+- wrapped vault key + wrap nonce/tag;
+- payload nonce;
+- bounded authenticated ciphertext containing the complete record table.
 
 No credential plaintext appears in the file.
 
@@ -239,7 +253,8 @@ Before production admission:
 - modified nonce/ciphertext/tag/associated data;
 - truncation at structural boundaries;
 - hostile KDF parameters rejected before KDF work;
-- duplicate/corrupt record identifiers;
+- duplicate/corrupt record identifiers inside authenticated payload;
+- deletion/reordering/table-count tamper;
 - replace/delete/notFound;
 - atomic-write recovery;
 - concurrent-access/locking;
