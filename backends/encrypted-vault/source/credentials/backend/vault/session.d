@@ -57,6 +57,21 @@ final class VaultSession
         return vaultId_ == vaultId;
     }
 
+    string vaultIdText() const scope @safe
+    in (unlocked_)
+    {
+        enum string digits = "0123456789abcdef";
+        char[32] encoded;
+
+        foreach (i, value; vaultId_)
+        {
+            encoded[i * 2] = digits[value >> 4];
+            encoded[i * 2 + 1] = digits[value & 0x0f];
+        }
+
+        return encoded[].idup;
+    }
+
     void withKey(scope VaultKeyVisitor visitor) const scope @safe
     in (visitor !is null)
     in (unlocked_)
