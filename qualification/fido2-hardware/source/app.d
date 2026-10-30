@@ -266,11 +266,15 @@ private CredentialStatus enroll(
     out Fido2VaultBinding binding
 )
 {
-    if (options.uv)
+    const policy = options.uv
+        ? Fido2VerificationPolicy.userVerificationRequired
+        : Fido2VerificationPolicy.userPresence;
+
+    if (!pin.empty)
         return enrollFido2VaultBindingWithPin(
             devicePath,
             options.rpId,
-            Fido2VerificationPolicy.userVerificationRequired,
+            policy,
             pin,
             binding
         );
@@ -278,7 +282,7 @@ private CredentialStatus enroll(
     return enrollFido2VaultBinding(
         devicePath,
         options.rpId,
-        Fido2VerificationPolicy.userPresence,
+        policy,
         binding
     );
 }
@@ -334,11 +338,16 @@ private CredentialStatus addEnvelope(
     out VaultUnlockEnvelope envelope
 )
 {
-    if (options.uv)
+    const policy = options.uv
+        ? Fido2VerificationPolicy.userVerificationRequired
+        : Fido2VerificationPolicy.userPresence;
+
+    if (!pin.empty)
         return addFido2VaultUnlockWithPin(
             store,
             devicePath,
             options.rpId,
+            policy,
             pin,
             envelope
         );
@@ -347,7 +356,7 @@ private CredentialStatus addEnvelope(
         store,
         devicePath,
         options.rpId,
-        Fido2VerificationPolicy.userPresence,
+        policy,
         envelope
     );
 }
@@ -462,6 +471,23 @@ void main(string[] args)
         pin,
         deterministicBinding
     );
+
+    if (!options.uv &&
+        enrollmentStatus == CredentialStatus.interactionRequired &&
+        pin.empty)
+    {
+        writeln(
+            "creation_pin_required=YES (CTAP2 authenticator requires PIN for MakeCredential; later user-presence hmac-secret derivation remains PIN-less)"
+        );
+        pin = readPin();
+
+        enrollmentStatus = enroll(
+            options,
+            options.deviceA,
+            pin,
+            deterministicBinding
+        );
+    }
 
     if (enrollmentStatus == CredentialStatus.unsupported)
     {
@@ -649,14 +675,34 @@ void main(string[] args)
     enforce(handle.valid, "synthetic handle not returned");
 
     VaultUnlockEnvelope envelopeA;
-    enforceStatus(
-        addEnvelope(
+    auto envelopeAStatus = addEnvelope(
+        options,
+        store,
+        options.deviceA,
+        pin,
+        envelopeA
+    );
+
+    if (!options.uv &&
+        envelopeAStatus == CredentialStatus.interactionRequired &&
+        pin.empty)
+    {
+        writeln(
+            "creation_pin_required=YES (envelope credential enrollment)"
+        );
+        pin = readPin();
+
+        envelopeAStatus = addEnvelope(
             options,
             store,
             options.deviceA,
             pin,
             envelopeA
-        ),
+        );
+    }
+
+    enforceStatus(
+        envelopeAStatus,
         CredentialStatus.ok,
         "add FIDO2 envelope A"
     );

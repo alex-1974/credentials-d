@@ -10,10 +10,10 @@ COMPILER_TAG="$(basename "$COMPILER" | tr -c 'A-Za-z0-9._-' '_')"
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 RECEIPT="$RESULT_DIR/${STAMP}-${COMPILER_TAG}.txt"
 
-UV=0
+DISCOVER_ONLY=0
 for arg in "$@"; do
-  if [[ "$arg" == "--uv" ]]; then
-    UV=1
+  if [[ "$arg" == "--discover-only" ]]; then
+    DISCOVER_ONLY=1
     break
   fi
 done
@@ -24,7 +24,10 @@ restore_tty() {
   fi
 }
 
-if [[ "$UV" == "1" && -t 0 ]]; then
+# A PIN may be required even for the user-presence policy on PIN-protected
+# CTAP2.0 authenticators during MakeCredential. Disable terminal echo for every
+# interactive qualification run, not only for --uv.
+if [[ "$DISCOVER_ONLY" == "0" && -t 0 ]]; then
   trap restore_tty EXIT INT TERM
   stty -echo
 fi

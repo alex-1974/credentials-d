@@ -23,6 +23,8 @@ enum int FIDO_OK = 0;
 
 enum int FIDO_DISABLE_U2F_FALLBACK = 0x02;
 
+enum ubyte CTAP_AUTHDATA_USER_VERIFIED = 0x04;
+
 enum int FIDO_EXT_HMAC_SECRET = 0x01;
 enum int FIDO_EXT_CRED_PROTECT = 0x02;
 
@@ -41,17 +43,29 @@ enum FidoOpt : int
 enum int FIDO_ERR_INVALID_COMMAND = 0x01;
 enum int FIDO_ERR_INVALID_PARAMETER = 0x02;
 enum int FIDO_ERR_INVALID_LENGTH = 0x03;
+enum int FIDO_ERR_INVALID_SEQ = 0x04;
 enum int FIDO_ERR_TIMEOUT = 0x05;
 enum int FIDO_ERR_CHANNEL_BUSY = 0x06;
+enum int FIDO_ERR_LOCK_REQUIRED = 0x0a;
+enum int FIDO_ERR_INVALID_CHANNEL = 0x0b;
+enum int FIDO_ERR_CBOR_UNEXPECTED_TYPE = 0x11;
+enum int FIDO_ERR_INVALID_CBOR = 0x12;
+enum int FIDO_ERR_MISSING_PARAMETER = 0x14;
 enum int FIDO_ERR_LIMIT_EXCEEDED = 0x15;
 enum int FIDO_ERR_UNSUPPORTED_EXTENSION = 0x16;
+enum int FIDO_ERR_FP_DATABASE_FULL = 0x17;
+enum int FIDO_ERR_LARGEBLOB_STORAGE_FULL = 0x18;
 enum int FIDO_ERR_CREDENTIAL_EXCLUDED = 0x19;
+enum int FIDO_ERR_PROCESSING = 0x21;
 enum int FIDO_ERR_INVALID_CREDENTIAL = 0x22;
 enum int FIDO_ERR_USER_ACTION_PENDING = 0x23;
 enum int FIDO_ERR_OPERATION_PENDING = 0x24;
+enum int FIDO_ERR_NO_OPERATIONS = 0x25;
 enum int FIDO_ERR_UNSUPPORTED_ALGORITHM = 0x26;
 enum int FIDO_ERR_OPERATION_DENIED = 0x27;
 enum int FIDO_ERR_KEY_STORE_FULL = 0x28;
+enum int FIDO_ERR_NOT_BUSY = 0x29;
+enum int FIDO_ERR_NO_OPERATION_PENDING = 0x2a;
 enum int FIDO_ERR_UNSUPPORTED_OPTION = 0x2b;
 enum int FIDO_ERR_INVALID_OPTION = 0x2c;
 enum int FIDO_ERR_KEEPALIVE_CANCEL = 0x2d;
@@ -72,6 +86,7 @@ enum int FIDO_ERR_UP_REQUIRED = 0x3b;
 enum int FIDO_ERR_UV_BLOCKED = 0x3c;
 enum int FIDO_ERR_UV_INVALID = 0x3f;
 enum int FIDO_ERR_UNAUTHORIZED_PERM = 0x40;
+enum int FIDO_ERR_ERR_OTHER = 0x7f;
 
 enum int FIDO_ERR_TX = -1;
 enum int FIDO_ERR_RX = -2;
@@ -83,10 +98,12 @@ enum int FIDO_ERR_INVALID_ARGUMENT = -7;
 enum int FIDO_ERR_USER_PRESENCE_REQUIRED = -8;
 enum int FIDO_ERR_INTERNAL = -9;
 enum int FIDO_ERR_NOTFOUND = -10;
+enum int FIDO_ERR_COMPRESS = -11;
 
 extern(C) @nogc nothrow
 {
     void fido_init(int flags);
+    const(char)* fido_strerr(int status);
 
     fido_dev_info_t* fido_dev_info_new(size_t n);
     void fido_dev_info_free(fido_dev_info_t** list, size_t n);
@@ -211,6 +228,10 @@ extern(C) @nogc nothrow
         size_t index
     );
     size_t fido_assert_hmac_secret_len(
+        const(fido_assert_t)* assertion,
+        size_t index
+    );
+    ubyte fido_assert_flags(
         const(fido_assert_t)* assertion,
         size_t index
     );

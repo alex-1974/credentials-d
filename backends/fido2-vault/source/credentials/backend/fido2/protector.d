@@ -130,8 +130,14 @@ CredentialStatus enrollFido2VaultBinding(
 /**
  * Enroll with an explicit PIN supplied through SecretBuffer.
  *
- * PIN authorization is valid only for the UV-required policy because
- * hmac-secret output depends on whether UV was performed.
+ * Some PIN-protected CTAP2.0 authenticators require PIN authorization for
+ * MakeCredential even when the resulting binding intentionally uses the
+ * user-presence-only hmac-secret branch for later assertions. In that case the
+ * PIN authorizes credential creation only; the persisted verification policy
+ * remains userPresence and later key derivation still occurs without PIN/UV.
+ *
+ * For userVerificationRequired, the PIN additionally satisfies the requested
+ * UV/credProtect policy.
  */
 CredentialStatus enrollFido2VaultBindingWithPin(
     string devicePath,
@@ -143,8 +149,7 @@ CredentialStatus enrollFido2VaultBindingWithPin(
 {
     binding = Fido2VaultBinding.init;
 
-    if (policy !=
-        Fido2VerificationPolicy.userVerificationRequired)
+    if (!validPolicy(policy))
         return CredentialStatus.invalidInput;
 
     CredentialStatus status = CredentialStatus.backendFailure;
@@ -271,7 +276,12 @@ version (linux)
     }
 
     /**
-     * UV/PIN variant of addFido2VaultUnlock.
+     * PIN-assisted enrollment variant of addFido2VaultUnlock.
+     *
+     * The overload without an explicit policy preserves the original API and
+     * means userVerificationRequired. The policy overload also supports
+     * PIN-protected CTAP2.0 authenticators that require PIN only while creating
+     * an otherwise userPresence binding.
      */
     CredentialStatus addFido2VaultUnlockWithPin(
         EncryptedVaultCredentialStore store,
@@ -281,13 +291,36 @@ version (linux)
         out VaultUnlockEnvelope envelope
     ) @safe
     {
+        return addFido2VaultUnlockWithPin(
+            store,
+            devicePath,
+            rpId,
+            Fido2VerificationPolicy.userVerificationRequired,
+            pin,
+            envelope
+        );
+    }
+
+    /// Ditto.
+    CredentialStatus addFido2VaultUnlockWithPin(
+        EncryptedVaultCredentialStore store,
+        string devicePath,
+        string rpId,
+        Fido2VerificationPolicy policy,
+        scope ref const SecretBuffer pin,
+        out VaultUnlockEnvelope envelope
+    ) @safe
+    {
         envelope = VaultUnlockEnvelope.init;
+
+        if (!validPolicy(policy))
+            return CredentialStatus.invalidInput;
 
         Fido2VaultBinding binding;
         auto status = enrollFido2VaultBindingWithPin(
             devicePath,
             rpId,
-            Fido2VerificationPolicy.userVerificationRequired,
+            policy,
             pin,
             binding
         );
@@ -296,18 +329,39 @@ version (linux)
 
         const encodedBinding = binding.serialize();
 
-        VaultWrappingKeySource source =
-            (scope const ubyte[protectorSaltBytes] salt,
-             scope SecretVisitor visitor) @safe
-            {
-                return withFido2WrappingKeyWithPin(
-                    devicePath,
-                    binding,
-                    salt,
-                    pin,
-                    visitor
-                );
-            };
+        VaultWrappingKeySource source;
+
+        final switch (policy)
+        {
+            case Fido2VerificationPolicy.userPresence:
+                source =
+                    (scope const ubyte[protectorSaltBytes] salt,
+                     scope SecretVisitor visitor) @safe
+                    {
+                        return withFido2WrappingKey(
+                            devicePath,
+                            binding,
+                            salt,
+                            visitor
+                        );
+                    };
+                break;
+
+            case Fido2VerificationPolicy.userVerificationRequired:
+                source =
+                    (scope const ubyte[protectorSaltBytes] salt,
+                     scope SecretVisitor visitor) @safe
+                    {
+                        return withFido2WrappingKeyWithPin(
+                            devicePath,
+                            binding,
+                            salt,
+                            pin,
+                            visitor
+                        );
+                    };
+                break;
+        }
 
         return createVaultUnlockEnvelopeForStore(
             store,
@@ -487,10 +541,6 @@ private CredentialStatus enrollImpl(
             null,
             null,
             null
-        )) != FIDO_OK ||
-        (rc = fido_cred_set_rk(
-            cred,
-            FidoOpt.false_
         )) != FIDO_OK)
         return mapFidoStatus(rc);
 
@@ -499,10 +549,10 @@ private CredentialStatus enrollImpl(
     final switch (policy)
     {
         case Fido2VerificationPolicy.userPresence:
-            rc = fido_cred_set_uv(
-                cred,
-                FidoOpt.false_
-            );
+            // CTAP requires the uv option to be absent when the authenticator
+            // does not advertise built-in UV. rk=false is also the default, so
+            // both options remain omitted for maximum CTAP2.0 compatibility.
+            rc = FIDO_OK;
             break;
 
         case Fido2VerificationPolicy.userVerificationRequired:
@@ -637,10 +687,9 @@ private CredentialStatus deriveImpl(
     final switch (binding.verificationPolicy)
     {
         case Fido2VerificationPolicy.userPresence:
-            rc = fido_assert_set_uv(
-                assertion,
-                FidoOpt.false_
-            );
+            // Do not send uv=false to authenticators that do not advertise
+            // built-in UV. Omission has the protocol default of no UV request.
+            rc = FIDO_OK;
             break;
 
         case Fido2VerificationPolicy.userVerificationRequired:
@@ -663,6 +712,26 @@ private CredentialStatus deriveImpl(
 
     if (fido_assert_count(assertion) != 1)
         return CredentialStatus.backendFailure;
+
+    const flags = fido_assert_flags(assertion, 0);
+    const uvPerformed =
+        (flags & CTAP_AUTHDATA_USER_VERIFIED) != 0;
+
+    final switch (binding.verificationPolicy)
+    {
+        case Fido2VerificationPolicy.userPresence:
+            // hmac-secret output is UV-state dependent. If the authenticator
+            // forced UV despite an UP-only binding, reject rather than silently
+            // switching the derived wrapping-key domain.
+            if (uvPerformed)
+                return CredentialStatus.unsupported;
+            break;
+
+        case Fido2VerificationPolicy.userVerificationRequired:
+            if (!uvPerformed)
+                return CredentialStatus.permissionDenied;
+            break;
+    }
 
     const secretLength =
         fido_assert_hmac_secret_len(assertion, 0);
@@ -810,6 +879,7 @@ private CredentialStatus mapFidoStatus(int status)
         case FIDO_ERR_INVALID_COMMAND:
         case FIDO_ERR_INVALID_PARAMETER:
         case FIDO_ERR_INVALID_LENGTH:
+        case FIDO_ERR_MISSING_PARAMETER:
         case FIDO_ERR_INVALID_PARAM:
         case FIDO_ERR_INVALID_ARGUMENT:
             return CredentialStatus.invalidInput;
@@ -820,13 +890,26 @@ private CredentialStatus mapFidoStatus(int status)
 
         case FIDO_ERR_TIMEOUT:
         case FIDO_ERR_CHANNEL_BUSY:
+        case FIDO_ERR_INVALID_SEQ:
+        case FIDO_ERR_LOCK_REQUIRED:
+        case FIDO_ERR_INVALID_CHANNEL:
+        case FIDO_ERR_CBOR_UNEXPECTED_TYPE:
+        case FIDO_ERR_INVALID_CBOR:
+        case FIDO_ERR_PROCESSING:
+        case FIDO_ERR_NO_OPERATIONS:
+        case FIDO_ERR_NOT_BUSY:
+        case FIDO_ERR_NO_OPERATION_PENDING:
+        case FIDO_ERR_ERR_OTHER:
         case FIDO_ERR_TX:
         case FIDO_ERR_RX:
         case FIDO_ERR_RX_NOT_CBOR:
         case FIDO_ERR_RX_INVALID_CBOR:
         case FIDO_ERR_INVALID_SIG:
         case FIDO_ERR_INTERNAL:
+        case FIDO_ERR_COMPRESS:
         case FIDO_ERR_CREDENTIAL_EXCLUDED:
+        case FIDO_ERR_FP_DATABASE_FULL:
+        case FIDO_ERR_LARGEBLOB_STORAGE_FULL:
         case FIDO_ERR_KEY_STORE_FULL:
             return CredentialStatus.backendFailure;
 

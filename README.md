@@ -237,7 +237,8 @@ random vault key
 
 Two interaction policies are explicit:
 
-- `userPresence`: touch/user presence, with UV explicitly disabled;
+- `userPresence`: touch/user presence with no UV request; the returned
+  assertion is rejected if the authenticator nevertheless reports UV;
 - `userVerificationRequired`: UV required and enrollment requests
   `credProtect=UV_REQUIRED`; unsupported authenticators fail rather than
   silently downgrading.
@@ -249,7 +250,10 @@ persisted non-secret FIDO2 binding.
 FIDO2 operations use official libfido2 through a narrow private FFI and are
 synchronous; applications must execute enrollment/unlock away from a GUI/render
 thread. PIN overloads accept `SecretBuffer`, create only one temporary
-NUL-terminated native buffer, and overwrite it before release.
+NUL-terminated native buffer, and overwrite it before release. A PIN-protected
+CTAP2.0 authenticator may require this overload for MakeCredential even when
+the persisted binding remains `userPresence`; later hmac-secret derivation
+still occurs without PIN/UV.
 
 CI qualifies the ABI, parsing, envelope cryptography and no-hardware discovery
 path. Production claims involving an actual authenticator require the separate
