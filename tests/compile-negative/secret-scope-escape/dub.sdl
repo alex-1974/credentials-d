@@ -1,0 +1,8 @@
+name "credentials-d-negative-secret-scope-escape"
+description "Secret plaintext view must not escape scoped callback"
+license "MIT"
+
+targetType "executable"
+sourcePaths "source"
+
+dependency "credentials-d" path="../../.."
