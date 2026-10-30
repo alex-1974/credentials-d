@@ -5,7 +5,6 @@ module credentials.backend.secret_service.store;
 
 version (linux):
 
-import core.stdc.stddef : ptrdiff_t;
 import credentials.backend.secret_service.ffi;
 import credentials.handle : CredentialHandle;
 import credentials.namespace : CredentialNamespace;
