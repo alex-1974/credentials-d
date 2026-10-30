@@ -264,7 +264,7 @@ final class MacOSDataProtectionCredentialStore : CredentialStore
             kSecAttrAccessibleWhenUnlockedThisDeviceOnly
         );
 
-        auto data = makeNoCopyData(bytes);
+        auto data = makeData(bytes);
         if (data is null)
             return CredentialStatus.backendFailure;
 
@@ -286,7 +286,7 @@ final class MacOSDataProtectionCredentialStore : CredentialStore
 
         scope(exit) CFRelease(updates);
 
-        auto data = makeNoCopyData(bytes);
+        auto data = makeData(bytes);
         if (data is null)
             return CredentialStatus.backendFailure;
 
@@ -400,10 +400,16 @@ final class MacOSDataProtectionCredentialStore : CredentialStore
     }
 
     /**
-     * Wrap scoped SecretBuffer bytes without making a credentials-d-owned
-     * plaintext copy. The wrapper never owns the backing bytes.
+     * Create a short-lived CoreFoundation-owned immutable input buffer.
+     *
+     * This intentionally prefers explicit ownership over the zero-copy
+     * constructor. Apple does not guarantee that
+     * CFDataCreateWithBytesNoCopy avoids copying, and the external-buffer
+     * lifetime proved fragile under the macOS LDC qualification path.
+     *
+     * The CFData is released immediately after the synchronous SecItem call.
      */
-    private static CFDataRef makeNoCopyData(
+    private static CFDataRef makeData(
         scope const(ubyte)[] bytes
     ) @trusted
     {
@@ -411,11 +417,10 @@ final class MacOSDataProtectionCredentialStore : CredentialStore
             ? cast(const(ubyte)*) "".ptr
             : bytes.ptr;
 
-        return CFDataCreateWithBytesNoCopy(
+        return CFDataCreate(
             null,
             ptr,
-            cast(CFIndex) bytes.length,
-            kCFAllocatorNull
+            cast(CFIndex) bytes.length
         );
     }
 
