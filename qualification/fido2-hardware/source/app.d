@@ -237,9 +237,10 @@ private void wipe(scope ubyte[] bytes) nothrow @nogc @trusted
 
 private SecretBuffer readPin()
 {
-    writeln(
-        "Enter authenticator PIN on stdin. The PIN is not printed or included in receipts."
+    stderr.writeln(
+        "ACTION_REQUIRED=Enter authenticator PIN on stdin. The PIN is not printed or included in receipts."
     );
+    stderr.flush();
 
     auto line = stdin.readln();
     enforce(line.length != 0, "PIN input missing");
@@ -428,9 +429,10 @@ private bool findDevicePresent(
 
 private void waitForRemoval(string deviceA)
 {
-    writeln(
+    stderr.writeln(
         "ACTION_REQUIRED=Unplug security key A, then press Enter."
     );
+    stderr.flush();
     stdin.readln();
 
     const devices = discover();
@@ -498,6 +500,7 @@ void main(string[] args)
 
     writeln("policy=", options.uv ? "uv-required" : "user-presence");
     printDevice("device_a", deviceAInfo);
+    stdout.flush();
     if (hasDeviceB)
         printDevice("device_b", deviceBInfo);
 
@@ -517,9 +520,10 @@ void main(string[] args)
         enrollmentStatus == CredentialStatus.interactionRequired &&
         pin.empty)
     {
-        writeln(
+        stderr.writeln(
             "creation_pin_required=YES (CTAP2 authenticator requires PIN for MakeCredential; later user-presence hmac-secret derivation remains PIN-less)"
         );
+        stderr.flush();
         pin = readPin();
 
         enrollmentStatus = enroll(
@@ -728,9 +732,10 @@ void main(string[] args)
         envelopeAStatus == CredentialStatus.interactionRequired &&
         pin.empty)
     {
-        writeln(
+        stderr.writeln(
             "creation_pin_required=YES (envelope credential enrollment)"
         );
+        stderr.flush();
         pin = readPin();
 
         envelopeAStatus = addEnvelope(
