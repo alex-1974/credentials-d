@@ -1,0 +1,8 @@
+name "credentials-d-linux-secret-service-integration"
+description "Native Linux Secret Service integration qualification"
+license "MIT"
+
+targetType "executable"
+sourcePaths "source"
+
+dependency "credentials-d:linux-secret-service" path="../.."
