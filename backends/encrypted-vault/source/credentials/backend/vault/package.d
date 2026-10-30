@@ -17,6 +17,7 @@ public import credentials.backend.vault.protector :
     RecoveredVaultKeyConsumer,
     VaultUnlockEnvelope,
     VaultWrappingKeySource,
+    protectorSaltBytes,
     createVaultUnlockEnvelope,
     recoverVaultKeyFromEnvelope;
 
