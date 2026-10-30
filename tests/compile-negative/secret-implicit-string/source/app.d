@@ -4,6 +4,6 @@ import credentials : SecretBuffer;
 
 void main()
 {
-    auto secret = new SecretBuffer(cast(const(ubyte)[]) "secret");
+    auto secret = SecretBuffer(cast(const(ubyte)[]) "secret");
     string exposed = secret;
 }
