@@ -129,7 +129,6 @@ final class LinuxSecretServiceStore : CredentialStore
             true,
             StoreProtection.operatingSystem,
             StoreUnlockModel.operatingSystem,
-            false,
             // Secret Service does not promise that provider storage can never
             // roam/synchronize. Do not claim local-device-only protection.
             StoreMobility.mayRoam,
