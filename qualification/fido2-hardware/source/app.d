@@ -14,12 +14,14 @@ import credentials.backend.fido2 :
     Fido2DeviceInfo,
     Fido2VaultBinding,
     Fido2VerificationPolicy,
+    addFido2TouchVaultUnlockWithEnrollmentPin,
     addFido2VaultUnlock,
     addFido2VaultUnlockWithPin,
     discoverFido2Devices,
     enrollFido2VaultBinding,
     enrollFido2VaultBindingWithPin,
     unlockVaultWithFido2,
+    unlockVaultWithFido2Touch,
     unlockVaultWithFido2WithPin,
     withFido2WrappingKey,
     withFido2WrappingKeyWithPin;
@@ -417,7 +419,8 @@ private CredentialStatus addEnvelope(
         ? Fido2VerificationPolicy.userVerificationRequired
         : Fido2VerificationPolicy.userPresence;
 
-    if (!pin.empty)
+    if (options.uv)
+    {
         return addFido2VaultUnlockWithPin(
             store,
             devicePath,
@@ -426,12 +429,24 @@ private CredentialStatus addEnvelope(
             pin,
             envelope
         );
+    }
+
+    if (!pin.empty)
+    {
+        return addFido2TouchVaultUnlockWithEnrollmentPin(
+            store,
+            devicePath,
+            options.rpId,
+            pin,
+            envelope
+        );
+    }
 
     return addFido2VaultUnlock(
         store,
         devicePath,
         options.rpId,
-        policy,
+        Fido2VerificationPolicy.touchOnly,
         envelope
     );
 }
@@ -452,7 +467,7 @@ private CredentialStatus unlockEnvelope(
             pin
         );
 
-    return unlockVaultWithFido2(
+    return unlockVaultWithFido2Touch(
         store,
         devicePath,
         envelope
