@@ -13,7 +13,7 @@ import credentials.secret : SecretBuffer;
 import credentials.store :
     CredentialStatus,
     CredentialStore,
-    SecretVisitor,
+    SecretCallback,
     StoreBlocking,
     StoreCapabilities,
     StoreConcurrency,
@@ -139,7 +139,7 @@ final class LinuxSecretServiceStore : CredentialStore
         );
     }
 
-    override CredentialStatus store(
+    override CredentialStatus save(
         scope ref const SecretBuffer secret,
         out CredentialHandle handle
     ) @safe
@@ -150,9 +150,9 @@ final class LinuxSecretServiceStore : CredentialStore
         }
     }
 
-    override CredentialStatus acquire(
+    override CredentialStatus withSecret(
         CredentialHandle handle,
-        scope SecretVisitor visitor
+        scope SecretCallback visitor
     ) @safe
     {
         synchronized (this)
@@ -161,7 +161,7 @@ final class LinuxSecretServiceStore : CredentialStore
         }
     }
 
-    override CredentialStatus replace(
+    override CredentialStatus update(
         CredentialHandle handle,
         scope ref const SecretBuffer replacement
     ) @safe
@@ -245,7 +245,7 @@ final class LinuxSecretServiceStore : CredentialStore
 
     private CredentialStatus acquireImpl(
         CredentialHandle handle,
-        scope SecretVisitor visitor
+        scope SecretCallback visitor
     ) @trusted
     {
         if (visitor is null)
