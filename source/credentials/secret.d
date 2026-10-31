@@ -1,5 +1,5 @@
 /**
- * Explicit secret-buffer ownership and scoped plaintext access.
+ * Secret values that should stay out of ordinary application state.
  */
 module credentials.secret;
 
@@ -8,22 +8,24 @@ import core.stdc.stdlib : free, malloc;
 import core.volatile : volatileStore;
 
 /**
- * Owns one non-GC allocation containing credential plaintext.
+ * Buffer for a password, token or other credential value.
  *
- * `SecretBuffer` is deliberately non-copyable. Moving the value transfers
- * ownership without duplicating the backing allocation.
+ * Create a SecretBuffer before passing a secret to a credential store. Use
+ * withBytes() only when an API actually needs the bytes, and keep that work
+ * inside the callback.
  *
- * The destructor clears and frees the owned non-GC memory deterministically
- * when normal D value lifetime rules run. Consumers may call `clear`
- * explicitly when prompt destruction is desirable.
+ * SecretBuffer cannot be copied accidentally. Call clear() when the
+ * application no longer needs the value and wants to release it immediately.
  *
- * Plaintext access is explicit through `withBytes`. The callback receives a
- * scoped, const view and must not retain it.
+ * Examples:
+ * ---
+ * auto token = SecretBuffer(tokenBytes);
  *
- * This type cannot erase copies that existed before construction or that a
- * consumer deliberately creates inside the explicit callback. It also makes
- * no claim against a compromised process, register spills, swap, hibernation
- * or operating-system memory capture.
+ * CredentialHandle handle;
+ * store.save(token, handle);
+ *
+ * token.clear();
+ * ---
  */
 struct SecretBuffer
 {
@@ -31,13 +33,14 @@ struct SecretBuffer
     private size_t length_;
 
     /**
-     * Copy plaintext bytes once into owned non-GC memory.
-     *
-     * The source remains the caller's responsibility; credentials-d cannot
-     * erase it after this constructor returns.
+     * Create a secret buffer from bytes you already have.
      *
      * Params:
-     *     source = Plaintext bytes to copy into owned secret storage.
+     *     source = Secret bytes to place in the buffer.
+     *
+     * Note:
+     *     The source array is still owned by the caller. Clear or discard it
+     *     according to the needs of your application.
      */
     this(scope const(ubyte)[] source) @trusted
     {
@@ -53,13 +56,12 @@ struct SecretBuffer
     }
 
     /**
-     * Secrets are not copyable. Use D move semantics when ownership transfer is
-     * required.
+     * SecretBuffer values cannot be copied.
      */
     @disable this(this);
 
     /**
-     * Clear and release the owned non-GC allocation.
+     * Clear and release this secret immediately.
      */
     ~this() nothrow @nogc @trusted
     {
@@ -67,7 +69,7 @@ struct SecretBuffer
     }
 
     /**
-     * Number of currently owned plaintext bytes.
+     * Number of bytes in this secret.
      */
     @property size_t length() const scope @nogc nothrow pure @safe
     {
@@ -75,7 +77,7 @@ struct SecretBuffer
     }
 
     /**
-     * Whether this buffer currently owns no plaintext bytes.
+     * Whether this secret currently contains no bytes.
      */
     @property bool empty() const scope @nogc nothrow pure @safe
     {
@@ -83,14 +85,20 @@ struct SecretBuffer
     }
 
     /**
-     * Invoke `callback` with a scoped, read-only view of the plaintext.
+     * Use the secret bytes for one operation.
      *
-     * Under DIP1000, straightforward attempts to retain the view outside the
-     * callback are rejected by the compiler.
+     * Keep the operation that needs the secret inside callback.
      *
      * Params:
-     *     callback = Function that may use the plaintext only for the duration
-     *     of this call.
+     *     callback = Code that uses the secret bytes.
+     *
+     * Examples:
+     * ---
+     * secret.withBytes((scope const(ubyte)[] bytes) @safe
+     * {
+     *     // Call the API that needs bytes here.
+     * });
+     * ---
      */
     void withBytes(
         scope void delegate(scope const(ubyte)[]) @safe callback
@@ -106,13 +114,10 @@ struct SecretBuffer
     }
 
     /**
-     * Securely overwrite the owned allocation and release it.
+     * Clear the secret and make this buffer empty.
      *
-     * The overwrite uses `core.volatile.volatileStore`, whose writes are
-     * compiler-recognized and guaranteed not to be removed as dead stores.
-     *
-     * This is a process-memory hygiene guarantee for this allocation only, not
-     * a claim that all historical copies of the credential have been erased.
+     * Call this when the application is finished with a long-lived secret
+     * before the normal value lifetime ends.
      */
     void clear() scope nothrow @nogc @trusted
     {
