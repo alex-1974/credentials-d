@@ -21,10 +21,13 @@ import credentials.backend.fido2 :
     queryFido2Capabilities,
     enrollFido2VaultBinding,
     enrollFido2VaultBindingWithPin,
+    enrollFido2VaultBindingWithUserVerification,
     unlockVaultWithFido2,
     unlockVaultWithFido2Touch,
+    unlockVaultWithFido2UserVerification,
     unlockVaultWithFido2WithPin,
     withFido2WrappingKey,
+    withFido2WrappingKeyUserVerification,
     withFido2WrappingKeyWithPin;
 import credentials.backend.vault :
     EncryptedVaultCredentialStore,
@@ -69,6 +72,7 @@ private struct Options
 {
     bool discoverOnly;
     bool uv;
+    bool builtInUv;
     bool confirmRemoveA;
     string deviceA;
     string deviceB;
@@ -131,6 +135,10 @@ private Options parseOptions(string[] args)
         {
             options.uv = true;
         }
+        else if (arg == "--uv-built-in")
+        {
+            options.builtInUv = true;
+        }
         else if (arg == "--confirm-remove-a")
         {
             options.confirmRemoveA = true;
@@ -161,7 +169,18 @@ private Options parseOptions(string[] args)
         }
     }
 
+    enforce(
+        !(options.uv && options.builtInUv),
+        "--uv and --uv-built-in are mutually exclusive"
+    );
+
     return options;
+}
+
+private bool requiresUserVerification(const Options options)
+    @nogc nothrow pure @safe
+{
+    return options.uv || options.builtInUv;
 }
 
 private Fido2DeviceInfo[] discover()
@@ -357,11 +376,18 @@ private CredentialStatus enroll(
     out Fido2VaultBinding binding
 )
 {
-    const policy = options.uv
+    const policy = requiresUserVerification(options)
         ? Fido2VerificationPolicy.userVerificationRequired
         : Fido2VerificationPolicy.touchOnly;
 
     promptTouch(touchAction);
+
+    if (options.builtInUv)
+        return enrollFido2VaultBindingWithUserVerification(
+            devicePath,
+            options.rpId,
+            binding
+        );
 
     if (!pin.empty)
         return enrollFido2VaultBindingWithPin(
@@ -405,6 +431,13 @@ private CredentialStatus deriveCore(
             binding,
             salt,
             pin,
+            visitor
+        );
+    else if (options.builtInUv)
+        status = withFido2WrappingKeyUserVerification(
+            devicePath,
+            binding,
+            salt,
             visitor
         );
     else
@@ -518,6 +551,13 @@ private CredentialStatus unlockEnvelope(
             devicePath,
             envelope,
             pin
+        );
+
+    if (options.builtInUv)
+        return unlockVaultWithFido2UserVerification(
+            store,
+            devicePath,
+            envelope
         );
 
     return unlockVaultWithFido2Touch(
@@ -729,7 +769,14 @@ void main(string[] args)
         enforce(hasDeviceB, "device B is not currently discoverable");
     }
 
-    report("policy=", options.uv ? "uv-required" : "touch-only");
+    report(
+        "policy=",
+        options.uv
+            ? "uv-required-pin"
+            : options.builtInUv
+                ? "uv-required-built-in"
+                : "touch-only"
+    );
     printDevice("device_a", deviceAInfo);
 
     Fido2Capabilities deviceACapabilities;
@@ -742,6 +789,15 @@ void main(string[] args)
         "query device A capabilities"
     );
     printCapabilities("device_a", deviceACapabilities);
+
+    if (options.builtInUv &&
+        (!deviceACapabilities.builtInUserVerificationSupported ||
+         !deviceACapabilities.builtInUserVerificationConfigured))
+    {
+        report("result=UNSUPPORTED");
+        report("unsupported_stage=built-in-user-verification");
+        return;
+    }
 
     if (hasDeviceB)
     {
@@ -772,7 +828,7 @@ void main(string[] args)
         deterministicBinding
     );
 
-    if (!options.uv &&
+    if (!requiresUserVerification(options) &&
         enrollmentStatus == CredentialStatus.interactionRequired &&
         pin.empty)
     {
