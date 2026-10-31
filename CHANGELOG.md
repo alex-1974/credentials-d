@@ -4,6 +4,13 @@ All notable changes to this project will be documented here.
 
 ## Unreleased
 
+- Redesign the pre-0.1 public API around consumer terminology: `save()`,
+  `withSecret()`, `update()`, `EncryptedCredentialVault`,
+  `VaultUnlockMethod`, and the `credentials.security_key` facade.
+- Move protocol-level FIDO2/CTAP and low-level vault protector terminology out
+  of the consumer package surface; public security-key access is expressed as
+  `touch` or `verifiedUser`.
+
 - Add generic authenticated external vault-key envelopes with multiple-wrapper
   and passphrase-recovery semantics.
 - Add an optional FIDO2 hmac-secret vault-key protector through a narrow
