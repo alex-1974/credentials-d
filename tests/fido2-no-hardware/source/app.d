@@ -1,7 +1,7 @@
 module app;
 
 import credentials : CredentialStatus;
-import credentials.backend.fido2 :
+import credentials.security_key :
     SecurityKeyCapabilities,
     SecurityKeyInfo,
     findSecurityKeys,
