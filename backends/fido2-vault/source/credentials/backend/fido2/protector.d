@@ -277,6 +277,36 @@ version (linux)
     }
 
     /**
+     * Add a touch-only FIDO2 unlock envelope using a PIN only for enrollment.
+     *
+     * This convenience function is intended for authenticators that require
+     * PIN authorization during MakeCredential even though later use is
+     * deliberately touch-only. The persisted policy is userPresence/touchOnly.
+     *
+     * The supplied PIN is used only while creating the authenticator
+     * credential and the initial envelope wrapping key. Later unlocks must use
+     * unlockVaultWithFido2Touch(), which has no PIN parameter and performs a
+     * user-presence-only hmac-secret assertion.
+     */
+    CredentialStatus addFido2TouchVaultUnlockWithEnrollmentPin(
+        EncryptedVaultCredentialStore store,
+        string devicePath,
+        string rpId,
+        scope ref const SecretBuffer enrollmentPin,
+        out VaultUnlockEnvelope envelope
+    ) @safe
+    {
+        return addFido2VaultUnlockWithPin(
+            store,
+            devicePath,
+            rpId,
+            Fido2VerificationPolicy.touchOnly,
+            enrollmentPin,
+            envelope
+        );
+    }
+
+    /**
      * PIN-assisted enrollment variant of addFido2VaultUnlock.
      *
      * The overload without an explicit policy preserves the original API and
@@ -403,6 +433,26 @@ version (linux)
             store,
             envelope,
             source
+        );
+    }
+
+    /**
+     * Unlock a POSIX vault with touch-only FIDO2 user presence.
+     *
+     * No PIN is accepted by this API. A binding enrolled through
+     * addFido2TouchVaultUnlockWithEnrollmentPin() therefore needs only the
+     * authenticator and a physical touch during normal unlock.
+     */
+    CredentialStatus unlockVaultWithFido2Touch(
+        EncryptedVaultCredentialStore store,
+        string devicePath,
+        scope const VaultUnlockEnvelope envelope
+    ) @safe
+    {
+        return unlockVaultWithFido2(
+            store,
+            devicePath,
+            envelope
         );
     }
 
