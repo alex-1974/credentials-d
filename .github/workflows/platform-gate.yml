@@ -106,6 +106,28 @@ jobs:
             false
           fi
 
+      - name: Windows consumer documentation
+        if: startsWith(matrix.os, 'windows-') && startsWith(matrix.compiler, 'dmd-')
+        shell: bash
+        run: |
+          rm -rf backends/windows/docs
+          dub build \
+            --root=backends/windows \
+            --build=ddox \
+            --compiler="$DC" \
+            --force
+
+      - name: macOS consumer documentation
+        if: startsWith(matrix.os, 'macos-') && startsWith(matrix.compiler, 'dmd-')
+        shell: bash
+        run: |
+          rm -rf backends/macos-data-protection/docs
+          dub build \
+            --root=backends/macos-data-protection \
+            --build=ddox \
+            --compiler="$DC" \
+            --force
+
       - name: Release build
         shell: bash
         run: dub build --build=release --compiler="$DC" --force
