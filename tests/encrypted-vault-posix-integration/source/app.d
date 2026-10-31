@@ -19,11 +19,12 @@ import credentials :
     SecretCallback;
 import credentials.vault :
     EncryptedCredentialVault,
-    VaultUnlockMethod,
-    VaultWrappingKeySource,
+    VaultUnlockMethod;
+import credentials.backend.vault.posix_protector :
     createVaultUnlockMethodForStore,
     unlockVaultWithEnvelope;
 import credentials.backend.vault.protector :
+    VaultWrappingKeySource,
     protectorSaltBytes;
 import std.conv : to;
 import std.file :
