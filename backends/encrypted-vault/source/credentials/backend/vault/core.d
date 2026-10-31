@@ -9,7 +9,7 @@ import credentials.backend.vault.sodium;
 import credentials.backend.vault.session : VaultSession;
 import credentials.namespace : CredentialNamespace;
 import credentials.secret : SecretBuffer;
-import credentials.store : SecretVisitor;
+import credentials.store : SecretCallback;
 
 enum VaultCoreStatus
 {
@@ -1277,7 +1277,7 @@ VaultCoreStatus vaultAcquireUnlocked(
     CredentialNamespace ns,
     VaultSession session,
     string locator,
-    scope SecretVisitor visitor
+    scope SecretCallback visitor
 ) @safe
 {
     if (visitor is null)
@@ -1671,7 +1671,7 @@ VaultCoreStatus vaultAcquire(
     CredentialNamespace ns,
     scope ref const SecretBuffer passphrase,
     string locator,
-    scope SecretVisitor visitor
+    scope SecretCallback visitor
 ) @safe
 {
     if (visitor is null)
