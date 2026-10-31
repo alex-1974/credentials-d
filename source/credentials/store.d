@@ -48,8 +48,8 @@ enum StoreConcurrency
 enum StoreProtection
 {
     memoryOnly,
-    nativeUserCredentialStore,
-    applicationEncryptedVault
+    operatingSystem,
+    encryptedVault
 }
 
 /**
@@ -58,8 +58,8 @@ enum StoreProtection
 enum StoreUnlockModel
 {
     none,
-    osManaged,
-    applicationManaged
+    operatingSystem,
+    application
 }
 
 /**
@@ -151,14 +151,14 @@ interface CredentialStore
     ) @safe;
 
     /**
-     * Acquire plaintext explicitly for the duration of `visitor`.
+     * Acquire plaintext explicitly for the duration of `callback`.
      *
-     * The visitor is invoked exactly once on `ok`, and not invoked for any
+     * The callback is invoked exactly once on `ok`, and not invoked for any
      * other status. Consumer exceptions propagate normally.
      */
     CredentialStatus withSecret(
         CredentialHandle handle,
-        scope SecretCallback visitor
+        scope SecretCallback callback
     ) @safe;
 
     /**
