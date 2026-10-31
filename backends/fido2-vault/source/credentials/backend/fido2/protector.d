@@ -112,7 +112,7 @@ CredentialStatus queryFido2Capabilities(
 
     auto dev = fido_dev_new();
     if (dev is null)
-        return CredentialStatus.backendFailure;
+        return CredentialStatus.storageFailure;
 
     scope(exit)
     {
@@ -136,7 +136,7 @@ CredentialStatus queryFido2Capabilities(
 
     auto info = fido_cbor_info_new();
     if (info is null)
-        return CredentialStatus.backendFailure;
+        return CredentialStatus.storageFailure;
 
     scope(exit) fido_cbor_info_free(&info);
 
@@ -231,7 +231,7 @@ CredentialStatus discoverFido2Devices(
 
     auto list = fido_dev_info_new(maximumFido2Devices);
     if (list is null)
-        return CredentialStatus.backendFailure;
+        return CredentialStatus.storageFailure;
 
     scope(exit) fido_dev_info_free(&list, maximumFido2Devices);
 
@@ -247,7 +247,7 @@ CredentialStatus discoverFido2Devices(
         return mapFidoStatus(rc);
 
     if (count > maximumFido2Devices)
-        return CredentialStatus.backendFailure;
+        return CredentialStatus.storageFailure;
 
     devices = new Fido2DeviceInfo[count];
 
@@ -255,7 +255,7 @@ CredentialStatus discoverFido2Devices(
     {
         const info = fido_dev_info_ptr(list, i);
         if (info is null)
-            return CredentialStatus.backendFailure;
+            return CredentialStatus.storageFailure;
 
         devices[i].path = copyCString(fido_dev_info_path(info));
         devices[i].manufacturer =
@@ -264,7 +264,7 @@ CredentialStatus discoverFido2Devices(
             copyCString(fido_dev_info_product_string(info));
 
         if (devices[i].path.length == 0)
-            return CredentialStatus.backendFailure;
+            return CredentialStatus.storageFailure;
     }
 
     return CredentialStatus.ok;
@@ -340,7 +340,7 @@ CredentialStatus enrollFido2VaultBindingWithPin(
     if (!validPolicy(policy))
         return CredentialStatus.invalidInput;
 
-    CredentialStatus status = CredentialStatus.backendFailure;
+    CredentialStatus status = CredentialStatus.storageFailure;
 
     status = withNativePin(
         pin,
@@ -420,7 +420,7 @@ CredentialStatus withFido2WrappingKeyWithPin(
         Fido2VerificationPolicy.userVerificationRequired)
         return CredentialStatus.invalidInput;
 
-    CredentialStatus status = CredentialStatus.backendFailure;
+    CredentialStatus status = CredentialStatus.storageFailure;
 
     status = withNativePin(
         pin,
@@ -599,7 +599,7 @@ version (linux)
 
         if (supportsHmacSecretMakeCredential(devicePath))
         {
-            CredentialStatus fastStatus = CredentialStatus.backendFailure;
+            CredentialStatus fastStatus = CredentialStatus.storageFailure;
             fastStatus = withNativePin(
                 pin,
                 (const(char)* pinCString) @trusted
@@ -852,7 +852,7 @@ version (linux)
         }
 
         if (!secureRandomBytes(salt[]))
-            return CredentialStatus.backendFailure;
+            return CredentialStatus.storageFailure;
 
         Fido2VaultBinding binding;
         const enrollmentStatus = enrollImpl(
@@ -877,7 +877,7 @@ version (linux)
             return enrollmentStatus;
 
         if (!secretReceived)
-            return CredentialStatus.backendFailure;
+            return CredentialStatus.storageFailure;
 
         const encodedBinding = binding.serialize();
 
@@ -923,7 +923,7 @@ private CredentialStatus bindingFromEnvelope(
         protectorBinding,
         binding
     ))
-        return CredentialStatus.corruptData;
+        return CredentialStatus.corruptedData;
 
     return CredentialStatus.ok;
 }
@@ -958,7 +958,7 @@ private CredentialStatus enrollImpl(
 
     auto dev = fido_dev_new();
     if (dev is null)
-        return CredentialStatus.backendFailure;
+        return CredentialStatus.storageFailure;
 
     scope(exit)
     {
@@ -982,7 +982,7 @@ private CredentialStatus enrollImpl(
 
     auto cred = fido_cred_new();
     if (cred is null)
-        return CredentialStatus.backendFailure;
+        return CredentialStatus.storageFailure;
 
     scope(exit) fido_cred_free(&cred);
 
@@ -991,7 +991,7 @@ private CredentialStatus enrollImpl(
 
     if (!secureRandomBytes(clientDataHash[]) ||
         !secureRandomBytes(userId[]))
-        return CredentialStatus.backendFailure;
+        return CredentialStatus.storageFailure;
 
     if ((rc = fido_cred_set_type(cred, COSE_ES256)) != FIDO_OK ||
         (rc = fido_cred_set_clientdata_hash(
@@ -1100,7 +1100,7 @@ private CredentialStatus enrollImpl(
     if (id is null ||
         idLength == 0 ||
         idLength > maximumCredentialIdBytes)
-        return CredentialStatus.backendFailure;
+        return CredentialStatus.storageFailure;
 
     binding = Fido2VaultBinding.trusted(
         rpId,
@@ -1110,7 +1110,7 @@ private CredentialStatus enrollImpl(
 
     return binding.valid
         ? CredentialStatus.ok
-        : CredentialStatus.backendFailure;
+        : CredentialStatus.storageFailure;
 }
 
 private CredentialStatus deriveImpl(
@@ -1130,7 +1130,7 @@ private CredentialStatus deriveImpl(
 
     auto dev = fido_dev_new();
     if (dev is null)
-        return CredentialStatus.backendFailure;
+        return CredentialStatus.storageFailure;
 
     scope(exit)
     {
@@ -1154,13 +1154,13 @@ private CredentialStatus deriveImpl(
 
     auto assertion = fido_assert_new();
     if (assertion is null)
-        return CredentialStatus.backendFailure;
+        return CredentialStatus.storageFailure;
 
     scope(exit) fido_assert_free(&assertion);
 
     ubyte[32] clientDataHash;
     if (!secureRandomBytes(clientDataHash[]))
-        return CredentialStatus.backendFailure;
+        return CredentialStatus.storageFailure;
 
     const bindingRpId = binding.rpId;
     const bindingCredentialId = binding.credentialId;
@@ -1221,7 +1221,7 @@ private CredentialStatus deriveImpl(
     }
 
     if (fido_assert_count(assertion) != 1)
-        return CredentialStatus.backendFailure;
+        return CredentialStatus.storageFailure;
 
     const flags = fido_assert_flags(assertion, 0);
     const uvPerformed =
@@ -1509,7 +1509,7 @@ private CredentialStatus mapFidoStatus(int status)
         case FIDO_ERR_USER_PRESENCE_REQUIRED:
         case FIDO_ERR_USER_ACTION_PENDING:
         case FIDO_ERR_OPERATION_PENDING:
-            return CredentialStatus.interactionRequired;
+            return CredentialStatus.userActionRequired;
 
         case FIDO_ERR_KEEPALIVE_CANCEL:
         case FIDO_ERR_OPERATION_DENIED:
@@ -1564,10 +1564,10 @@ private CredentialStatus mapFidoStatus(int status)
         case FIDO_ERR_FP_DATABASE_FULL:
         case FIDO_ERR_LARGEBLOB_STORAGE_FULL:
         case FIDO_ERR_KEY_STORE_FULL:
-            return CredentialStatus.backendFailure;
+            return CredentialStatus.storageFailure;
 
         default:
-            return CredentialStatus.backendFailure;
+            return CredentialStatus.storageFailure;
     }
 }
 
@@ -1606,7 +1606,7 @@ unittest
     );
     assert(
         mapFidoStatus(FIDO_ERR_PIN_REQUIRED) ==
-        CredentialStatus.interactionRequired
+        CredentialStatus.userActionRequired
     );
     assert(
         mapFidoStatus(FIDO_ERR_PIN_INVALID) ==
