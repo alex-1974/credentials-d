@@ -321,7 +321,7 @@ final class EncryptedCredentialVault : CredentialStore
                 namespace_,
                 session_,
                 locator,
-                visitor
+                callback
             );
 
             if (coreStatus != VaultCoreStatus.ok)
