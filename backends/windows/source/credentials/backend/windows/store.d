@@ -124,8 +124,7 @@ final class WindowsCredentialStore : CredentialStore
             true,
             StoreProtection.operatingSystem,
             StoreUnlockModel.operatingSystem,
-            false,
-            StoreMobility.localDevice,
+                        StoreMobility.localDevice,
             true,
             StoreBlocking.mayBlock,
             StoreConcurrency.serialized
@@ -194,7 +193,7 @@ final class WindowsCredentialStore : CredentialStore
         {
             string locator;
             if (!generateSecureLocator(locator))
-                return CredentialStatus.backendFailure;
+                return CredentialStatus.storageFailure;
 
             const serialized = handlePrefix_ ~ locator;
             const existsStatus = probe(serialized);
@@ -216,7 +215,7 @@ final class WindowsCredentialStore : CredentialStore
             return writeStatus;
         }
 
-        return CredentialStatus.backendFailure;
+        return CredentialStatus.storageFailure;
     }
 
     private CredentialStatus acquireImpl(
@@ -234,7 +233,7 @@ final class WindowsCredentialStore : CredentialStore
             return mapReadDeleteError(GetLastError());
 
         if (credential is null)
-            return CredentialStatus.backendFailure;
+            return CredentialStatus.storageFailure;
 
         scope(exit)
         {
@@ -244,11 +243,11 @@ final class WindowsCredentialStore : CredentialStore
 
         if (credential.CredentialBlobSize >
             CRED_MAX_CREDENTIAL_BLOB_SIZE)
-            return CredentialStatus.corruptData;
+            return CredentialStatus.corruptedData;
 
         if (credential.CredentialBlobSize != 0 &&
             credential.CredentialBlob is null)
-            return CredentialStatus.corruptData;
+            return CredentialStatus.corruptedData;
 
         const(ubyte)[] bytes;
         if (credential.CredentialBlobSize != 0)
@@ -305,7 +304,7 @@ final class WindowsCredentialStore : CredentialStore
     {
         auto target = nativeTarget(serializedHandle);
 
-        CredentialStatus result = CredentialStatus.backendFailure;
+        CredentialStatus result = CredentialStatus.storageFailure;
 
         secret.withBytes((scope const(ubyte)[] bytes) @safe
         {
@@ -330,7 +329,7 @@ final class WindowsCredentialStore : CredentialStore
             return mapReadDeleteError(GetLastError());
 
         if (credential is null)
-            return CredentialStatus.backendFailure;
+            return CredentialStatus.storageFailure;
 
         wipeCredentialBlob(credential);
         CredFree(credential);
@@ -405,10 +404,10 @@ final class WindowsCredentialStore : CredentialStore
 
             case ERROR_INVALID_FLAGS:
             case ERROR_INVALID_PARAMETER:
-                return CredentialStatus.backendFailure;
+                return CredentialStatus.storageFailure;
 
             default:
-                return CredentialStatus.backendFailure;
+                return CredentialStatus.storageFailure;
         }
     }
 
@@ -425,10 +424,10 @@ final class WindowsCredentialStore : CredentialStore
 
             case ERROR_INVALID_FLAGS:
             case ERROR_INVALID_PARAMETER:
-                return CredentialStatus.backendFailure;
+                return CredentialStatus.storageFailure;
 
             default:
-                return CredentialStatus.backendFailure;
+                return CredentialStatus.storageFailure;
         }
     }
 
