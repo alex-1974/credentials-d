@@ -295,6 +295,27 @@ CredentialStatus enrollFido2VaultBinding(
  * For userVerificationRequired, the PIN additionally satisfies the requested
  * UV/credProtect policy.
  */
+/**
+ * Enroll a user-verification-required binding without supplying a PIN.
+ *
+ * This path is intended for authenticators that can satisfy UV internally,
+ * such as biometric authenticators. The authenticator decides the UV modality;
+ * credentials-d only requires the resulting assertion policy.
+ */
+CredentialStatus enrollFido2VaultBindingWithUserVerification(
+    string devicePath,
+    string rpId,
+    out Fido2VaultBinding binding
+) @safe
+{
+    return enrollFido2VaultBinding(
+        devicePath,
+        rpId,
+        Fido2VerificationPolicy.userVerificationRequired,
+        binding
+    );
+}
+
 CredentialStatus enrollFido2VaultBindingWithPin(
     string devicePath,
     string rpId,
@@ -342,6 +363,31 @@ CredentialStatus withFido2WrappingKey(
         binding,
         salt,
         null,
+        visitor
+    );
+}
+
+/**
+ * Derive a UV-bound hmac-secret without supplying a PIN.
+ *
+ * The binding must require user verification. This is suitable for
+ * authenticators with built-in UV, for example fingerprint verification.
+ */
+CredentialStatus withFido2WrappingKeyUserVerification(
+    string devicePath,
+    scope const Fido2VaultBinding binding,
+    scope const ubyte[protectorSaltBytes] salt,
+    scope SecretVisitor visitor
+) @safe
+{
+    if (binding.verificationPolicy !=
+        Fido2VerificationPolicy.userVerificationRequired)
+        return CredentialStatus.invalidInput;
+
+    return withFido2WrappingKey(
+        devicePath,
+        binding,
+        salt,
         visitor
     );
 }
@@ -427,6 +473,29 @@ version (linux)
             fido2ProtectorKind,
             encodedBinding,
             source,
+            envelope
+        );
+    }
+
+    /**
+     * Add a user-verification-required FIDO2 unlock envelope without a PIN.
+     *
+     * This path is intended for authenticators with built-in UV. The
+     * authenticator may satisfy UV through fingerprint or another internal
+     * modality; credentials-d does not encode the modality in the binding.
+     */
+    CredentialStatus addFido2UserVerificationVaultUnlock(
+        EncryptedVaultCredentialStore store,
+        string devicePath,
+        string rpId,
+        out VaultUnlockEnvelope envelope
+    ) @safe
+    {
+        return addFido2VaultUnlock(
+            store,
+            devicePath,
+            rpId,
+            Fido2VerificationPolicy.userVerificationRequired,
             envelope
         );
     }
@@ -604,6 +673,43 @@ version (linux)
         scope const VaultUnlockEnvelope envelope
     ) @safe
     {
+        Fido2VaultBinding binding;
+        const status = bindingFromEnvelope(envelope, binding);
+        if (status != CredentialStatus.ok)
+            return status;
+
+        if (binding.verificationPolicy !=
+            Fido2VerificationPolicy.touchOnly)
+            return CredentialStatus.invalidInput;
+
+        return unlockVaultWithFido2(
+            store,
+            devicePath,
+            envelope
+        );
+    }
+
+    /**
+     * Unlock a POSIX vault with required user verification and no PIN argument.
+     *
+     * The binding must use userVerificationRequired. This is the consumer
+     * entry point for authenticators with built-in UV such as fingerprint.
+     */
+    CredentialStatus unlockVaultWithFido2UserVerification(
+        EncryptedVaultCredentialStore store,
+        string devicePath,
+        scope const VaultUnlockEnvelope envelope
+    ) @safe
+    {
+        Fido2VaultBinding binding;
+        const status = bindingFromEnvelope(envelope, binding);
+        if (status != CredentialStatus.ok)
+            return status;
+
+        if (binding.verificationPolicy !=
+            Fido2VerificationPolicy.userVerificationRequired)
+            return CredentialStatus.invalidInput;
+
         return unlockVaultWithFido2(
             store,
             devicePath,
