@@ -13,11 +13,13 @@ struct FidoDev;
 struct FidoCred;
 struct FidoAssert;
 struct FidoDevInfo;
+struct FidoCborInfo;
 
 alias fido_dev_t = FidoDev;
 alias fido_cred_t = FidoCred;
 alias fido_assert_t = FidoAssert;
 alias fido_dev_info_t = FidoDevInfo;
+alias fido_cbor_info_t = FidoCborInfo;
 
 enum int FIDO_OK = 0;
 
@@ -31,6 +33,9 @@ enum int FIDO_EXT_CRED_PROTECT = 0x02;
 enum int FIDO_CRED_PROT_UV_REQUIRED = 0x03;
 
 enum int COSE_ES256 = -7;
+enum int COSE_EDDSA = -8;
+enum int COSE_ES384 = -35;
+enum int COSE_RS256 = -257;
 
 enum FidoOpt : int
 {
@@ -132,6 +137,44 @@ extern(C) @nogc nothrow
     int fido_dev_close(fido_dev_t* dev);
     int fido_dev_cancel(fido_dev_t* dev);
     int fido_dev_set_timeout(fido_dev_t* dev, int milliseconds);
+
+    fido_cbor_info_t* fido_cbor_info_new();
+    void fido_cbor_info_free(fido_cbor_info_t** info);
+    int fido_dev_get_cbor_info(
+        fido_dev_t* dev,
+        fido_cbor_info_t* info
+    );
+    const(char*)* fido_cbor_info_extensions_ptr(
+        const(fido_cbor_info_t)* info
+    );
+    size_t fido_cbor_info_extensions_len(
+        const(fido_cbor_info_t)* info
+    );
+    const(char*)* fido_cbor_info_options_name_ptr(
+        const(fido_cbor_info_t)* info
+    );
+    const(bool)* fido_cbor_info_options_value_ptr(
+        const(fido_cbor_info_t)* info
+    );
+    size_t fido_cbor_info_options_len(
+        const(fido_cbor_info_t)* info
+    );
+    size_t fido_cbor_info_algorithm_count(
+        const(fido_cbor_info_t)* info
+    );
+    int fido_cbor_info_algorithm_cose(
+        const(fido_cbor_info_t)* info,
+        size_t index
+    );
+    ulong fido_cbor_info_fwversion(
+        const(fido_cbor_info_t)* info
+    );
+    ulong fido_cbor_info_uv_modality(
+        const(fido_cbor_info_t)* info
+    );
+    long fido_cbor_info_rk_remaining(
+        const(fido_cbor_info_t)* info
+    );
 
     fido_cred_t* fido_cred_new();
     void fido_cred_free(fido_cred_t** cred);
