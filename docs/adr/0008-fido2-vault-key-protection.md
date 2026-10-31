@@ -102,6 +102,32 @@ enumerations.
 
 Bindings are bounded and canonically serialized.
 
+## Authenticator capability discovery
+
+The optional FIDO2 package exposes non-secret runtime capability discovery
+through `queryFido2Capabilities()`. The implementation uses CTAP
+`authenticatorGetInfo` through libfido2 and does not create a credential,
+derive a secret, request a PIN, or require user presence.
+
+The returned `Fido2Capabilities` describes only standardized capabilities:
+
+- `hmac-secret` and CTAP 2.2 `hmac-secret-mc`;
+- `credProtect`;
+- client-PIN support and whether a PIN is configured;
+- built-in user-verification support and whether it is configured;
+- raw UV-modality bits when advertised;
+- discoverable-credential support and the CTAP 2.1 remaining-capacity estimate;
+- advertised COSE ES256, EdDSA, ES384 and RS256 algorithms;
+- the raw authenticator firmware-version value reported by GetInfo.
+
+No YubiKey model or vendor-specific policy is hard-coded.
+
+Capability discovery is advisory rather than an authorization decision. A
+device can change or be replaced between discovery and use, and optional
+metadata may be absent on older authenticators. Enrollment and assertion paths
+therefore continue to request their required extensions/options and map any
+failure through the normal fail-closed status handling.
+
 ## RP id
 
 The RP id is supplied by the consumer when enrolling the protector.
