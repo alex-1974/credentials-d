@@ -35,7 +35,7 @@ private void runStoreContract(CredentialStore store)
     auto first = SecretBuffer(cast(const(ubyte)[]) "contract:first");
 
     CredentialHandle handle;
-    assert(store.store(first, handle) == CredentialStatus.ok);
+    assert(store.save(first, handle) == CredentialStatus.ok);
     assert(handle.valid);
 
     CredentialHandle parsed;
@@ -43,7 +43,7 @@ private void runStoreContract(CredentialStore store)
     assert(parsed.serialize() == handle.serialize());
 
     size_t visits;
-    assert(store.acquire(parsed, (scope const(ubyte)[] bytes) @safe
+    assert(store.withSecret(parsed, (scope const(ubyte)[] bytes) @safe
     {
         assert(bytes == cast(const(ubyte)[]) "contract:first");
         ++visits;
@@ -52,9 +52,9 @@ private void runStoreContract(CredentialStore store)
 
     auto replacement =
         SecretBuffer(cast(const(ubyte)[]) "contract:second");
-    assert(store.replace(parsed, replacement) == CredentialStatus.ok);
+    assert(store.update(parsed, replacement) == CredentialStatus.ok);
 
-    assert(store.acquire(parsed, (scope const(ubyte)[] bytes) @safe
+    assert(store.withSecret(parsed, (scope const(ubyte)[] bytes) @safe
     {
         assert(bytes == cast(const(ubyte)[]) "contract:second");
         ++visits;
@@ -64,13 +64,13 @@ private void runStoreContract(CredentialStore store)
     assert(store.remove(parsed) == CredentialStatus.ok);
 
     bool calledAfterRemove;
-    assert(store.acquire(parsed, (scope const(ubyte)[]) @safe
+    assert(store.withSecret(parsed, (scope const(ubyte)[]) @safe
     {
         calledAfterRemove = true;
     }) == CredentialStatus.notFound);
     assert(!calledAfterRemove);
 
-    assert(store.replace(parsed, replacement) == CredentialStatus.notFound);
+    assert(store.update(parsed, replacement) == CredentialStatus.notFound);
     assert(store.remove(parsed) == CredentialStatus.notFound);
 }
 
@@ -92,12 +92,12 @@ void main()
     auto secret = SecretBuffer(cast(const(ubyte)[]) "locked-test");
 
     CredentialHandle handle;
-    assert(locked.store(secret, handle) == CredentialStatus.ok);
+    assert(locked.save(secret, handle) == CredentialStatus.ok);
 
-    locked.forcedAcquireStatus = CredentialStatus.locked;
+    locked.forcedWithSecretStatus = CredentialStatus.locked;
 
     bool called;
-    assert(locked.acquire(handle, (scope const(ubyte)[]) @safe
+    assert(locked.withSecret(handle, (scope const(ubyte)[]) @safe
     {
         called = true;
     }) == CredentialStatus.locked);
@@ -105,10 +105,10 @@ void main()
 
     auto unavailable = new MockCredentialStore(ns);
     scope(exit) unavailable.clearAll();
-    unavailable.forcedStoreStatus = CredentialStatus.unavailable;
+    unavailable.forcedSaveStatus = CredentialStatus.unavailable;
 
     CredentialHandle unavailableHandle;
-    assert(unavailable.store(secret, unavailableHandle) ==
+    assert(unavailable.save(secret, unavailableHandle) ==
         CredentialStatus.unavailable);
     assert(!unavailableHandle.valid);
 }
