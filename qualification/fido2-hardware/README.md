@@ -33,7 +33,8 @@ path is not persisted inside `Fido2VaultBinding`, `VaultUnlockEnvelope`, or
 the qualification PASS receipt fields.
 
 Discovery also prints standard CTAP capabilities for each authenticator:
-hmac-secret/hmac-secret-mc, credProtect, PIN/UV state, UV modality,
+hmac-secret/hmac-secret-mc, whether hmac-secret-mc is usable with the local
+libfido2 ABI, credProtect, PIN/UV state, UV modality,
 discoverable-credential support/capacity, ES256/EdDSA/ES384/RS256 support and
 the raw firmware-version value. This GetInfo query does not require touch or
 PIN entry.
@@ -51,6 +52,12 @@ If exactly one FIDO2 authenticator is discoverable, the runner selects it
 automatically. This avoids relying on unstable `/dev/hidrawN` numbering.
 `--device-a /dev/hidrawN` remains available when several devices are
 attached.
+
+The qualification runner reports the envelope enrollment path. On a device
+with `hmac-secret-mc` it prints
+`Envelope_A_enrollment_path=hmac-secret-mc` and expects one combined
+MakeCredential/key-derivation interaction. On older devices it prints
+`makecredential-plus-getassertion` and retains the two explicit interactions.
 
 The operator is prompted before every individual operation that can require
 user presence. For each prompt, release the sensor, wait until the authenticator

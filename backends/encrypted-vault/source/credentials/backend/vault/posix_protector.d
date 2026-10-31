@@ -11,6 +11,7 @@ import credentials.backend.vault.protector :
     VaultUnlockEnvelope,
     VaultWrappingKeySource,
     createVaultUnlockEnvelope,
+    createVaultUnlockEnvelopeWithSalt,
     recoverVaultKeyFromEnvelope;
 import credentials.backend.vault.sodium :
     vaultKeyBytes,
@@ -50,6 +51,44 @@ CredentialStatus createVaultUnlockEnvelopeForStore(
         vaultKey[],
         protectorKind,
         protectorBinding,
+        keySource,
+        envelope
+    );
+}
+
+/**
+ * Internal sibling-backend variant for protectors that already selected the
+ * envelope salt before deriving their wrapping key.
+ */
+package(credentials.backend) CredentialStatus createVaultUnlockEnvelopeForStoreWithSalt(
+    EncryptedVaultCredentialStore store,
+    string protectorKind,
+    scope const(ubyte)[] protectorBinding,
+    scope const ubyte[32] salt,
+    scope VaultWrappingKeySource keySource,
+    out VaultUnlockEnvelope envelope
+) @safe
+{
+    envelope = VaultUnlockEnvelope.init;
+
+    if (store is null)
+        return CredentialStatus.invalidInput;
+
+    ubyte[16] vaultId;
+    ubyte[vaultKeyBytes] vaultKey;
+    scope(exit) zeroFixed(vaultKey);
+
+    auto status = store.copyUnlockMaterial(vaultId, vaultKey);
+    if (status != CredentialStatus.ok)
+        return status;
+
+    return createVaultUnlockEnvelopeWithSalt(
+        store.credentialNamespace,
+        vaultId,
+        vaultKey[],
+        protectorKind,
+        protectorBinding,
+        salt,
         keySource,
         envelope
     );

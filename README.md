@@ -269,6 +269,16 @@ For built-in UV, consumers can use the explicit PIN-free helpers
 `userVerificationRequired` policy; they do not weaken to touch-only if the
 authenticator cannot perform UV.
 
+When capability discovery reports `hmac-secret-mc` and the locally linked
+libfido2 exposes the required 1.17-era client ABI, envelope enrollment uses
+the CTAP 2.2 MakeCredential extension to derive the initial wrapping key in the
+same authenticator interaction that creates the credential. The envelope salt
+is generated before MakeCredential and is reused unchanged by the vault
+envelope. Devices without `hmac-secret-mc`, or systems whose libfido2 lacks the
+optional client symbols, transparently retain the existing MakeCredential +
+GetAssertion flow. The persisted binding and envelope formats
+are identical in both cases.
+
 FIDO2 operations use official libfido2 through a narrow private FFI and are
 synchronous; applications must execute enrollment/unlock away from a GUI/render
 thread. PIN overloads accept `SecretBuffer`, create only one temporary

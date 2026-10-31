@@ -29,6 +29,7 @@ enum ubyte CTAP_AUTHDATA_USER_VERIFIED = 0x04;
 
 enum int FIDO_EXT_HMAC_SECRET = 0x01;
 enum int FIDO_EXT_CRED_PROTECT = 0x02;
+enum int FIDO_EXT_HMAC_SECRET_MC = 0x20;
 
 enum int FIDO_CRED_PROT_UV_REQUIRED = 0x03;
 
@@ -201,6 +202,11 @@ extern(C) @nogc nothrow
         fido_cred_t* cred,
         int flags
     );
+    int fido_cred_set_hmac_salt(
+        fido_cred_t* cred,
+        const(ubyte)* salt,
+        size_t saltLength
+    );
     int fido_cred_set_rk(
         fido_cred_t* cred,
         FidoOpt value
@@ -222,6 +228,15 @@ extern(C) @nogc nothrow
         const(fido_cred_t)* cred
     );
     size_t fido_cred_id_len(
+        const(fido_cred_t)* cred
+    );
+    const(ubyte)* fido_cred_hmac_secret_ptr(
+        const(fido_cred_t)* cred
+    );
+    size_t fido_cred_hmac_secret_len(
+        const(fido_cred_t)* cred
+    );
+    ubyte fido_cred_flags(
         const(fido_cred_t)* cred
     );
 

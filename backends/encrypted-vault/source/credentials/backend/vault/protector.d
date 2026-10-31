@@ -208,6 +208,39 @@ CredentialStatus createVaultUnlockEnvelope(
     out VaultUnlockEnvelope envelope
 ) @safe
 {
+    ubyte[protectorSaltBytes] salt;
+    if (!secureRandomBytes(salt[]))
+        return CredentialStatus.backendFailure;
+
+    return createVaultUnlockEnvelopeWithSalt(
+        ns,
+        vaultId,
+        vaultKey,
+        protectorKind,
+        protectorBinding,
+        salt,
+        keySource,
+        envelope
+    );
+}
+
+/**
+ * Internal sibling-backend helper for protectors that must know the envelope
+ * salt before their enrollment operation (for example CTAP hmac-secret-mc).
+ *
+ * Callers remain responsible for generating a fresh unpredictable salt.
+ */
+package(credentials.backend) CredentialStatus createVaultUnlockEnvelopeWithSalt(
+    CredentialNamespace ns,
+    scope const ubyte[16] vaultId,
+    scope const(ubyte)[] vaultKey,
+    string protectorKind,
+    scope const(ubyte)[] protectorBinding,
+    scope const ubyte[protectorSaltBytes] salt,
+    scope VaultWrappingKeySource keySource,
+    out VaultUnlockEnvelope envelope
+) @safe
+{
     envelope = VaultUnlockEnvelope.init;
 
     if (!ns.valid ||
@@ -217,11 +250,9 @@ CredentialStatus createVaultUnlockEnvelope(
         protectorBinding.length > maximumProtectorBindingBytes)
         return CredentialStatus.invalidInput;
 
-    ubyte[protectorSaltBytes] salt;
     ubyte[xNonceBytes] nonce;
 
-    if (!secureRandomBytes(salt[]) ||
-        !secureRandomBytes(nonce[]))
+    if (!secureRandomBytes(nonce[]))
         return CredentialStatus.backendFailure;
 
     auto bindingCopy = protectorBinding.dup;
