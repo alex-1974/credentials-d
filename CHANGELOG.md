@@ -4,6 +4,12 @@ All notable changes to this project will be documented here.
 
 ## Unreleased
 
+- Freeze the intended pre-0.1 consumer surface in `docs/API_STABILITY.md` and
+  complete Ddoc contracts/examples for the core store, value types, vault and
+  security-key facade.
+- Hide vault protector kind/binding accessors from the consumer surface; they
+  remain backend implementation details.
+
 - Improve pre-0.1 consumer ergonomics with direct `CredentialNamespace(...)`
   construction, clearer operation-status names, slimmer store capabilities and
   public `credentials.linux`, `credentials.windows` and
