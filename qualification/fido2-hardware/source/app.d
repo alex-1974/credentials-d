@@ -34,7 +34,7 @@ import credentials.backend.fido2.protector :
     withFido2WrappingKey,
     withFido2WrappingKeyUserVerification,
     withFido2WrappingKeyWithPin;
-import credentials.backend.vault :
+import credentials.vault :
     EncryptedCredentialVault,
     VaultUnlockMethod;
 import credentials.backend.vault.posix_protector :
