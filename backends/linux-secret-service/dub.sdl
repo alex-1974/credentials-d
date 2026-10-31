@@ -11,3 +11,6 @@ dependency "credentials-d" path="../.."
 
 libs "secret-1" "gio-2.0" "gobject-2.0" "glib-2.0" platform="linux"
 toolchainRequirements frontend=">=2.111.0"
+
+// Keep generated API docs focused on the supported consumer surface.
+x:ddoxFilterArgs "--unittest-examples" "--min-protection" "Public" "--ex" "credentials.backend."
