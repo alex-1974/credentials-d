@@ -4,6 +4,12 @@ All notable changes to this project will be documented here.
 
 ## Unreleased
 
+- Rewrite README and public Ddoc/DDOX documentation from a consumer perspective:
+  show what each API is for, how to use it, and realistic examples before
+  implementation detail.
+- Filter `credentials.backend.*` from generated DDOX documentation and add a
+  CI smoke build for the consumer-facing DDOX output.
+
 - Freeze the intended pre-0.1 consumer surface in `docs/API_STABILITY.md` and
   complete Ddoc contracts/examples for the core store, value types, vault and
   security-key facade.

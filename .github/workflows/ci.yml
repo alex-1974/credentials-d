@@ -112,6 +112,11 @@ jobs:
         shell: bash
         run: dub build --build=docs --compiler="$DC" --force
 
+      - name: DDOX consumer documentation build
+        if: startsWith(matrix.compiler, 'dmd-')
+        shell: bash
+        run: dub build --build=ddox --compiler="$DC" --force
+
       - name: Release build
         shell: bash
         run: dub build --build=release --compiler="$DC" --force

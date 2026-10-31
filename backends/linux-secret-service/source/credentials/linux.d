@@ -1,5 +1,8 @@
 /**
- * Public Linux credential-store API.
+ * Credential storage for Linux desktop applications.
+ *
+ * Use LinuxCredentialStore for the normal persistent credential store on a
+ * Linux desktop.
  */
 module credentials.linux;
 
@@ -8,15 +11,19 @@ import credentials.backend.secret_service.store :
     LinuxSecretServiceStore;
 
 /**
- * Credential store backed by the desktop operating-system credential service.
+ * Persistent Linux credential store.
  *
- * Construct one instance per application credential namespace.
+ * Create one store for your application's CredentialNamespace. Call close()
+ * when the application is finished with the store.
  *
  * Examples:
  * ---
  * auto ns = CredentialNamespace("org.example.application");
  * auto store = new LinuxCredentialStore(ns);
  * scope(exit) store.close();
+ *
+ * CredentialHandle handle;
+ * store.save(secret, handle);
  * ---
  */
 alias LinuxCredentialStore = LinuxSecretServiceStore;

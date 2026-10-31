@@ -1,24 +1,35 @@
 /**
- * Persistable opaque credential handles.
+ * Persistable references to saved credentials.
  */
 module credentials.handle;
 
 /**
- * Non-secret reference to a credential record.
+ * Reference to one saved credential.
  *
- * Handles returned by credentials-d contain no credential plaintext and are
- * intended to be safe to persist in ordinary application settings.
+ * Save serialize() in normal application settings. On the next run, rebuild
+ * the handle with tryParse() and pass it back to the same kind of credential
+ * store.
  *
- * The serialized form is opaque to consumers. Consumers may persist it and
- * later reconstruct a handle with `tryParse`, but must not infer backend,
- * namespace, identity or authorization semantics from its contents.
+ * Do not inspect or build handle strings yourself.
+ *
+ * Examples:
+ * ---
+ * CredentialHandle handle;
+ *
+ * if (store.save(secret, handle) == CredentialStatus.ok)
+ *     settings.tokenHandle = handle.serialize();
+ *
+ * CredentialHandle restored;
+ * if (CredentialHandle.tryParse(settings.tokenHandle, restored))
+ *     store.withSecret(restored, callback);
+ * ---
  */
 struct CredentialHandle
 {
     private string value_;
 
     /**
-     * Whether this handle contains a non-empty serialized identifier.
+     * Whether this handle can be passed to a credential store.
      */
     @property bool valid() const @nogc nothrow pure @safe
     {
@@ -26,10 +37,10 @@ struct CredentialHandle
     }
 
     /**
-     * Return the opaque serialized representation for persistence.
+     * Return the value to persist in normal application settings.
      *
      * Returns:
-     *     Non-secret opaque text suitable for ordinary application settings.
+     *     Opaque non-secret text.
      */
     string serialize() const @nogc nothrow pure @safe
     {
@@ -37,21 +48,24 @@ struct CredentialHandle
     }
 
     /**
-     * Parse a serialized handle previously returned by credentials-d.
-     *
-     * The grammar is deliberately narrow and bounded to keep handles
-     * single-line and suitable for ordinary configuration stores.
+     * Restore a handle previously returned by serialize().
      *
      * Params:
-     *     text = Persisted opaque handle text.
-     *     handle = Receives the handle on success, otherwise init.
+     *     text = Value read from application settings.
+     *     handle = Receives the restored handle.
      *
      * Returns:
-     *     true when text is a valid serialized handle; false otherwise.
+     *     true when text is a valid handle representation; false otherwise.
      *
-     * Note:
-     *     Parsing proves only syntactic validity. A later store operation still
-     *     verifies that the handle belongs to that backend/store namespace.
+     * Examples:
+     * ---
+     * CredentialHandle handle;
+     *
+     * if (!CredentialHandle.tryParse(settings.tokenHandle, handle))
+     * {
+     *     // Ignore the saved value and ask the user to sign in again.
+     * }
+     * ---
      */
     static bool tryParse(string text, out CredentialHandle handle)
         @nogc nothrow pure @safe

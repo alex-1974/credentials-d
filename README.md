@@ -1,314 +1,413 @@
 # credentials-d
 
-Secure credential storage for D applications.
+Credential storage for D applications.
 
-`credentials-d` is a small, application-independent library for storing and
-retrieving high-value application credentials without placing those secrets in
-ordinary settings files.
+Use `credentials-d` when your application needs to keep passwords, API tokens,
+refresh tokens or similar secrets out of ordinary configuration files.
 
-The motivating consumer is Dunia, but OpenStreetMap, OAuth, HTTP and application
-profile management are deliberately outside this package.
+The library gives you one small CRUD-style API and lets you choose where the
+credential is stored:
 
-## Status
+| Platform / need | Use |
+| --- | --- |
+| Linux desktop | `LinuxCredentialStore` |
+| Windows | `WindowsCredentialStore` |
+| macOS | `MacOSCredentialStore` |
+| Portable application-controlled file | `EncryptedCredentialVault` |
+| Tests / temporary credentials | `MemoryCredentialStore` |
 
-Pre-0.1 API freeze candidate.
+## Quick start
 
-The semantic core, native desktop credential-store backends and optional
-encrypted-vault backend are implemented and security-gated. The intended
-consumer surface is now documented in
-[API stability](docs/API_STABILITY.md). The macOS Data Protection Keychain
-still requires a signed app-like production qualification.
-
-## Intended scope
-
-The library is expected to own:
-
-- opaque credential identifiers and handles;
-- controlled secret ownership and lifetime;
-- a common credential-store contract;
-- deterministic memory/mock backends for contract testing;
-- Linux Secret Service, Windows Credential Manager and macOS Keychain adapters;
-- an optional application-controlled encrypted-vault backend using a qualified
-  narrow libsodium boundary;
-- optional hardware-assisted vault-key protectors such as FIDO2 hmac-secret.
-
-It does not aim to provide:
-
-- OAuth authorization flows;
-- HTTP clients;
-- OpenStreetMap identity or upload policy;
-- a password manager;
-- certificate management;
-- a general-purpose cryptographic toolkit;
-- custom cryptographic primitives.
-
-## Security direction
-
-Credentials are security-sensitive data.
-
-The design makes unsafe handling difficult rather than merely documenting that
-consumers should be careful. Owned secret plaintext lives in non-GC memory,
-`SecretBuffer` is non-copyable, plaintext exposure is explicit and scoped, and
-zeroization uses compiler-recognized volatile stores. Persistence remains behind
-an explicit store boundary.
-
-Platform credential stores are expected to be the normal persistence mechanism.
-An encrypted file vault is an explicit additional backend, not the definition
-of the library. Backend failure never silently downgrades to plaintext or
-another weaker store.
-
-The optional encrypted vault uses official libsodium through a narrow private
-FFI: Argon2id for the passphrase wrapper and XChaCha20-Poly1305-IETF for
-authenticated encryption. Optional FIDO2 support is a vault-key protector,
-never a CredentialStore and never a place to store application credentials.
-
-See [API stability](docs/API_STABILITY.md) for the public consumer contract,
-[ADR 0001](docs/adr/0001-security-scope.md) for the initial scope,
-[Threat Model and Security Contract](docs/security/THREAT_MODEL.md) for the
-normative security boundary, [Native platform credential-store
-qualification](docs/security/PLATFORM_STORES.md) for the OS backend comparison,
-and [SECURITY.md](SECURITY.md) for vulnerability reporting.
-
-
-## Public API prototype
-
-The first public contract separates persistable handles from plaintext:
+Every store belongs to an application namespace. Use one stable namespace for
+the same credential domain across application runs.
 
 ```d
 import credentials :
     CredentialHandle,
     CredentialNamespace,
     CredentialStatus,
-    MemoryCredentialStore,
     SecretBuffer;
+import credentials.linux : LinuxCredentialStore;
 
 auto ns = CredentialNamespace("org.example.application");
-
-auto store = new MemoryCredentialStore(ns);
-auto secret = SecretBuffer(cast(const(ubyte)[]) "token");
-
-CredentialHandle handle;
-assert(store.save(secret, handle) == CredentialStatus.ok);
-
-assert(store.withSecret(handle, (scope const(ubyte)[] bytes) @safe
-{
-    // Use plaintext only inside this explicit callback.
-}) == CredentialStatus.ok);
-
-assert(store.remove(handle) == CredentialStatus.ok);
+auto store = new LinuxCredentialStore(ns);
+scope(exit) store.close();
 ```
 
-`CredentialHandle.serialize()` and `CredentialNamespace` are non-secret and
-may be persisted in ordinary application settings. Credential plaintext may
-not.
+### Save a credential
 
-`SecretBuffer` owns a non-GC allocation, cannot be copied, and clears its owned
-allocation using `core.volatile.volatileStore` before release. This guarantees
-zeroization of that allocation against dead-store elimination; it does not
-erase the caller's source buffer or copies made by external code.
+```d
+auto token = SecretBuffer(
+    cast(const(ubyte)[]) "my-api-token"
+);
 
-`MemoryCredentialStore` is deterministic, ephemeral and thread-confined. It is
-a contract/reference backend, not a persistent security mechanism. It requires
-an explicit namespace and rejects handles from another store instance.
+CredentialHandle handle;
 
-See [ADR 0002](docs/adr/0002-credential-store-public-contract.md) for the
-original API semantics and [ADR 0003](docs/adr/0003-core-security-hardening.md)
-for the hardened ownership and backend contract.
+if (store.save(token, handle) != CredentialStatus.ok)
+{
+    // Handle the storage error.
+}
+```
 
-## Native backends
+The returned `CredentialHandle` contains no credential plaintext. Persist its
+serialized form in your normal application settings:
 
-Native credential stores are explicit DUB subpackages. The core package never
-silently selects a backend or falls back to weaker persistence.
+```d
+settings.oauthTokenHandle = handle.serialize();
+```
 
-### Linux Secret Service
+### Read it when needed
 
-Linux desktop consumers can opt into:
+```d
+CredentialHandle handle;
+
+if (CredentialHandle.tryParse(settings.oauthTokenHandle, handle))
+{
+    const status = store.withSecret(
+        handle,
+        (scope const(ubyte)[] token) @safe
+        {
+            // Use token here, for example for one HTTP request.
+        }
+    );
+}
+```
+
+The secret is available only inside the callback. Do the work that needs the
+credential there rather than copying it into long-lived application state.
+
+### Update it
+
+```d
+auto replacement = SecretBuffer(
+    cast(const(ubyte)[]) "new-api-token"
+);
+
+const status = store.update(handle, replacement);
+```
+
+The handle remains the same.
+
+### Remove it
+
+```d
+const status = store.remove(handle);
+```
+
+After a successful removal, discard the persisted handle from your settings as
+well.
+
+## Choosing a store
+
+### Linux
+
+Add the DUB subpackage:
 
 ```text
 credentials-d:linux-secret-service
 ```
 
-and create:
+Use:
 
 ```d
 import credentials : CredentialNamespace;
 import credentials.linux : LinuxCredentialStore;
 
-auto ns = CredentialNamespace("org.example.application");
-auto store = new LinuxCredentialStore(ns);
+auto store = new LinuxCredentialStore(
+    CredentialNamespace("org.example.application")
+);
+scope(exit) store.close();
 ```
 
-The backend uses libsecret with one retained Secret Service session, binary
-`SecretValue` payloads, opaque namespace/locator attributes, all-result lookup
-with ambiguity rejection, and explicit `unavailable` behavior when no service
-is reachable. Synchronous operations may block or prompt and must not run on a
-GUI/render thread.
+Use this for ordinary Linux desktop applications when a system credential
+service is available.
 
-See [ADR 0005](docs/adr/0005-linux-secret-service.md).
+### Windows
 
-### macOS Data Protection Keychain
-
-macOS application consumers can opt into:
-
-```text
-credentials-d:macos-data-protection
-```
-
-and create:
-
-```d
-import credentials : CredentialNamespace;
-import credentials.macos : MacOSCredentialStore;
-
-auto ns = CredentialNamespace("org.example.application");
-auto store = new MacOSCredentialStore(ns);
-```
-
-Every operation explicitly targets the Data Protection Keychain, disables
-synchronization, and new records use
-`kSecAttrAccessibleWhenUnlockedThisDeviceOnly`. Missing signing/keychain
-entitlements fail closed; the backend never switches to the legacy file-based
-keychain.
-
-A final production qualification must run the integration fixture inside the
-consumer's properly signed/provisioned macOS application context.
-
-See [ADR 0006](docs/adr/0006-macos-data-protection-keychain.md).
-
-### Windows Credential Manager
-
-Windows consumers can opt into:
+Add:
 
 ```text
 credentials-d:windows
 ```
 
-and create:
+Use:
 
 ```d
 import credentials : CredentialNamespace;
 import credentials.windows : WindowsCredentialStore;
 
-auto ns = CredentialNamespace("org.example.application");
-auto store = new WindowsCredentialStore(ns);
+auto store = new WindowsCredentialStore(
+    CredentialNamespace("org.example.application")
+);
 ```
 
-The backend uses Generic Credentials with local-machine persistence for the
-current Windows user, validates the 2560-byte blob limit before native calls,
-uses opaque OS-CSPRNG record identifiers, and wipes plaintext returned by
-`CredReadW` before `CredFree`.
+Use this for credentials that should remain available to the current Windows
+user across application runs.
 
-It does not claim hardware-backed or Credential Guard protection, and it does
-not silently fall back when Windows Credential Manager is unavailable.
+### macOS
 
-See [ADR 0004](docs/adr/0004-windows-credential-manager.md).
+Add:
 
+```text
+credentials-d:macos-data-protection
+```
 
-## Security-key vault unlock
+Use:
 
-Hardware-assisted vault unlock is available through the optional:
+```d
+import credentials : CredentialNamespace;
+import credentials.macos : MacOSCredentialStore;
+
+auto store = new MacOSCredentialStore(
+    CredentialNamespace("org.example.application")
+);
+```
+
+The macOS backend is intended for signed/provisioned application builds. The
+implementation is covered by CI, but final production qualification in such an
+application context is still pending.
+
+### Encrypted vault
+
+Add:
+
+```text
+credentials-d:encrypted-vault
+```
+
+Use a vault when you deliberately want a portable, application-controlled
+credential file instead of the operating-system credential store.
+
+Create one:
+
+```d
+import credentials :
+    CredentialNamespace,
+    CredentialStatus,
+    SecretBuffer;
+import credentials.vault : EncryptedCredentialVault;
+
+auto ns = CredentialNamespace("org.example.application");
+auto passphrase = SecretBuffer(
+    cast(const(ubyte)[]) "correct horse battery staple"
+);
+
+EncryptedCredentialVault vault;
+
+assert(
+    EncryptedCredentialVault.createNew(
+        "credentials.vault",
+        ns,
+        passphrase,
+        vault
+    ) == CredentialStatus.ok
+);
+
+scope(exit) vault.lock();
+```
+
+Open an existing vault:
+
+```d
+EncryptedCredentialVault vault;
+
+if (EncryptedCredentialVault.openExisting(
+    "credentials.vault",
+    ns,
+    vault
+) == CredentialStatus.ok)
+{
+    auto passphrase = SecretBuffer(
+        cast(const(ubyte)[]) userEnteredPassphrase
+    );
+
+    if (vault.unlock(passphrase) == CredentialStatus.ok)
+    {
+        // save(), withSecret(), update() and remove() work here too.
+    }
+}
+```
+
+Call `lock()` when the application no longer needs access to the vault.
+
+## Unlock a vault with a security key
+
+Add:
 
 ```text
 credentials-d:fido2-vault
 ```
 
-The public API deliberately speaks in security-key terms. Consumers do not need
-to understand FIDO2/CTAP commands, hmac-secret extensions, credential
-protection flags, COSE algorithms, or authenticator device-path semantics.
-
-Connected keys can be discovered and inspected without user interaction:
+First find the connected keys:
 
 ```d
+import credentials : CredentialStatus;
 import credentials.security_key :
-    SecurityKeyCapabilities,
     SecurityKeyInfo,
-    findSecurityKeys,
-    getSecurityKeyCapabilities;
+    findSecurityKeys;
 
 SecurityKeyInfo[] keys;
-assert(findSecurityKeys(keys) == CredentialStatus.ok);
 
-SecurityKeyCapabilities capabilities;
-assert(getSecurityKeyCapabilities(
-    keys[0].id,
-    capabilities
-) == CredentialStatus.ok);
+if (findSecurityKeys(keys) == CredentialStatus.ok &&
+    keys.length != 0)
+{
+    // Present keys to the user or select the expected device.
+}
 ```
 
-The consumer-relevant capabilities describe whether the key can unlock a vault,
-whether setup can be completed in a single key interaction, and whether PIN or
-built-in user verification is available. Protocol extensions and signing
-algorithms remain internal diagnostics.
-
-A vault unlock method is added with one of two clear interaction policies:
+Add a key as an unlock method while the vault is already unlocked:
 
 ```d
 import credentials.security_key :
     SecurityKeyAccess,
-    addSecurityKeyUnlock,
-    unlockWithSecurityKey;
-import credentials.vault :
-    EncryptedCredentialVault,
-    VaultUnlockMethod;
+    addSecurityKeyUnlock;
+import credentials.vault : VaultUnlockMethod;
 
 VaultUnlockMethod unlockMethod;
 
-auto status = addSecurityKeyUnlock(
+const status = addSecurityKeyUnlock(
     vault,
     keys[0].id,
     SecurityKeyAccess.touch,
     unlockMethod
 );
+```
 
-// Later, after reopening the locked vault:
-status = unlockWithSecurityKey(
-    vault,
-    keys[0].id,
+Persist the unlock method:
+
+```d
+settings.securityKeyUnlock = unlockMethod.serialize();
+```
+
+Later, open the vault and unlock it with the key:
+
+```d
+import credentials.security_key : unlockWithSecurityKey;
+
+VaultUnlockMethod unlockMethod;
+
+if (VaultUnlockMethod.tryParse(
+    settings.securityKeyUnlock,
     unlockMethod
-);
+))
+{
+    const status = unlockWithSecurityKey(
+        vault,
+        keys[0].id,
+        unlockMethod
+    );
+}
 ```
 
-`SecurityKeyAccess.touch` means that normal unlock requires physical
-presence/touch. `SecurityKeyAccess.verifiedUser` means that the key must verify
-the user; the key may satisfy that requirement through built-in verification
-such as fingerprint, or through a PIN-backed flow. A PIN overload is available
-when setup or verified-user access requires one.
+Use `SecurityKeyAccess.touch` when touching the key is enough. Use
+`SecurityKeyAccess.verifiedUser` when the key must verify the user. If setup
+or unlock requires a PIN, use the corresponding overload that accepts a
+`SecretBuffer` PIN.
 
-The vault's `CredentialNamespace` is used internally as the security-key
-application scope. Consumers do not supply protocol-specific relying-party
-identifiers.
+## Handling results
 
-Internally, the backend uses FIDO2 hmac-secret to derive a credential-scoped
-wrapping key. CTAP 2.2 hmac-secret-mc is used automatically as a single-step
-setup fast path when both the authenticator and local libfido2 support it.
-Older authenticators transparently retain the qualified two-step setup path.
-These implementation choices do not change the public unlock-method format.
+Normal operational outcomes are returned as `CredentialStatus`.
 
-The physical security-key contract was qualified on 2026-10-31 with a YubiKey
-5.2.4 for touch-only operation, PIN-backed user verification, wrong credential,
-tamper rejection and passphrase recovery. Built-in biometric verification and
-the CTAP 2.2 single-step fast path are implemented but require suitable hardware
-for positive physical qualification.
+A typical application handles the few statuses relevant to its workflow:
 
-See [ADR 0008](docs/adr/0008-fido2-vault-key-protection.md).
+```d
+final switch (status)
+{
+    case CredentialStatus.ok:
+        break;
 
-## Compatibility baseline
+    case CredentialStatus.notFound:
+        // Ask the user to sign in again or recreate the credential.
+        break;
 
-Minimum supported D frontend:
+    case CredentialStatus.locked:
+        // Unlock the vault first.
+        break;
 
-```text
-2.111.0
+    case CredentialStatus.userCancelled:
+        // Keep the current UI state; the user chose not to continue.
+        break;
+
+    case CredentialStatus.unavailable:
+        // The selected credential store or security key is not available.
+        break;
+
+    default:
+        // Report or log the remaining error for this workflow.
+        break;
+}
 ```
 
-Normal development is checked with:
+See the generated API documentation for the meaning of every status.
+
+## Store capabilities
+
+If your application can work with more than one store, inspect
+`store.capabilities` instead of assuming behavior from the platform name.
+
+For example:
+
+```d
+const caps = store.capabilities;
+
+if (caps.blocking == StoreBlocking.mayPrompt)
+{
+    // Run the operation away from the render/UI thread.
+}
+```
+
+Capabilities also tell you whether storage is persistent, where it can move,
+who controls unlocking and what concurrency contract the store provides.
+
+## Persisted values
+
+These values are designed to be stored in normal application settings:
+
+- `CredentialNamespace.serialize()`
+- `CredentialHandle.serialize()`
+- `VaultUnlockMethod.serialize()`
+
+Parse persisted values with their matching `tryParse()` function.
+
+Do not interpret their serialized contents. Treat them as opaque values owned by
+credentials-d.
+
+## API stability
+
+The intended public surface is documented in
+[`docs/API_STABILITY.md`](docs/API_STABILITY.md).
+
+Consumer code should import:
+
+- `credentials`
+- `credentials.linux`
+- `credentials.windows`
+- `credentials.macos`
+- `credentials.vault`
+- `credentials.security_key`
+
+Modules under `credentials.backend.*` are implementation modules and are not
+part of the public compatibility contract.
+
+## Current status
+
+The API is a pre-`v0.1.0` freeze candidate.
+
+Linux, Windows, encrypted-vault and the tested security-key workflows have
+qualification coverage. The macOS backend still needs final qualification in a
+properly signed/provisioned macOS application.
+
+For security design, qualification evidence and implementation rationale, see
+the documents under `docs/security/` and `docs/adr/`.
+
+## Supported compilers
+
+Development baseline:
 
 ```text
 DMD 2.111.0
 LDC 1.41.0
 ```
-
-The main-branch release gate additionally exercises the workspace release
-compiler matrix.
 
 ## Development
 
@@ -318,8 +417,7 @@ dub test --compiler=ldc2 --force
 dub run --root=tests/consumer --compiler=dmd --force
 ```
 
-Normal integration targets `develop`. `main` is reserved for qualified release
-state.
+Normal integration targets `develop`. `main` is reserved for release state.
 
 ## License
 

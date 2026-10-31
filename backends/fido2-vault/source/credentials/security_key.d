@@ -1,8 +1,12 @@
 /**
- * Public security-key support for encrypted credential vaults.
+ * Use a physical security key to unlock an encrypted credential vault.
  *
- * FIDO2, CTAP, credential bindings, hmac-secret, COSE algorithms and native
- * device paths are implementation details of this backend.
+ * Typical flow:
+ *
+ * 1. findSecurityKeys() to show or select a connected key;
+ * 2. while the vault is unlocked, call addSecurityKeyUnlock();
+ * 3. persist the returned VaultUnlockMethod;
+ * 4. later open the vault and call unlockWithSecurityKey().
  */
 module credentials.security_key;
 
@@ -30,12 +34,12 @@ version (linux)
 /**
  * One currently connected security key.
  *
- * id is an opaque runtime selector. It may change after reconnect or reboot
- * and must not be persisted as the identity of an unlock method.
+ * Show manufacturer/product to the user when choosing between several keys.
+ * Pass id back to the functions in this module during the current connection.
  */
 struct SecurityKeyInfo
 {
-    /** Opaque runtime selector passed back to security-key operations. */
+    /** Runtime id used with the functions in this module. */
     string id;
 
     /** Human-readable manufacturer text reported by the device, if available. */
@@ -46,16 +50,16 @@ struct SecurityKeyInfo
 }
 
 /**
- * Consumer-relevant capabilities of one security key.
+ * Features that can affect setup or the user experience for one security key.
  *
- * Protocol extensions and signing algorithms are deliberately not exposed.
+ * Use this when the UI needs to explain available unlock choices before setup.
  */
 struct SecurityKeyCapabilities
 {
-    /** Whether this key can protect credentials-d vault unlock material. */
+    /** Whether this key can be used to unlock a credentials-d vault. */
     bool supportsVaultUnlock;
 
-    /** Whether setup can combine credential creation and key derivation. */
+    /** Whether setup usually needs only one interaction with the key. */
     bool supportsSingleStepSetup;
 
     /** Whether the key supports PIN-based verification. */
@@ -72,7 +76,7 @@ struct SecurityKeyCapabilities
 }
 
 /**
- * User interaction required when using a security key.
+ * How the user should prove presence or identity when using the key.
  */
 enum SecurityKeyAccess
 {
@@ -84,18 +88,26 @@ enum SecurityKeyAccess
 }
 
 /**
- * Find currently connected security keys.
+ * Find the security keys currently available to the application.
+ *
+ * Use this before setup or unlock to let the user choose a connected key.
  *
  * Params:
- *     keys = Receives one runtime descriptor per discovered key.
+ *     keys = Receives the connected keys.
  *
  * Returns:
- *     CredentialStatus.ok on successful discovery. An empty result with ok
- *     means no supported key is currently connected.
+ *     ok when discovery succeeded. An empty array means no key is connected.
  *
- * Note:
- *     SecurityKeyInfo.id is a runtime selector and must not be persisted as a
- *     durable identity.
+ * Examples:
+ * ---
+ * SecurityKeyInfo[] keys;
+ *
+ * if (findSecurityKeys(keys) == CredentialStatus.ok)
+ * {
+ *     foreach (key; keys)
+ *         showKeyChoice(key.manufacturer, key.product);
+ * }
+ * ---
  */
 CredentialStatus findSecurityKeys(
     out SecurityKeyInfo[] keys
@@ -123,16 +135,17 @@ CredentialStatus findSecurityKeys(
 }
 
 /**
- * Read consumer-relevant capabilities for one connected security key.
+ * Check which vault-unlock features one connected key offers.
  *
- * No touch, PIN, credential creation or secret derivation is performed.
+ * Use this when the setup UI should explain whether the key supports a PIN,
+ * built-in verification or a shorter setup flow.
  *
  * Params:
- *     keyId = Opaque runtime id returned by findSecurityKeys().
- *     capabilities = Receives the capability snapshot on success.
+ *     keyId = id returned by findSecurityKeys().
+ *     capabilities = Receives the available features.
  *
  * Returns:
- *     CredentialStatus.ok on success, otherwise the discovery/backend outcome.
+ *     ok when the capabilities were read.
  */
 CredentialStatus getSecurityKeyCapabilities(
     string keyId,
@@ -176,20 +189,35 @@ private Fido2VerificationPolicy nativePolicy(
 version (linux)
 {
     /**
-     * Add a security-key unlock method to an already unlocked vault.
+     * Add a connected security key as a way to unlock this vault.
      *
-     * The vault's CredentialNamespace is used as the security-key application
-     * scope. Consumers do not need to supply protocol-specific identifiers.
+     * Call this while vault is already unlocked. Persist method.serialize() on
+     * success so it can be used during a later application run.
      *
      * Params:
-     *     vault = Currently unlocked vault to protect.
-     *     keyId = Runtime id returned by findSecurityKeys().
-     *     access = Required interaction/verification policy.
-     *     method = Receives persistable non-secret unlock metadata on success.
+     *     vault = Currently unlocked vault.
+     *     keyId = id returned by findSecurityKeys().
+     *     access = Whether touch is enough or the user must be verified.
+     *     method = Receives the unlock method to persist.
      *
      * Returns:
-     *     CredentialStatus.ok on success. userActionRequired means setup needs
-     *     an explicit action that this overload cannot provide, such as a PIN.
+     *     ok on success. userActionRequired means setup needs the overload that
+     *     accepts a PIN.
+     *
+     * Examples:
+     * ---
+     * VaultUnlockMethod method;
+     *
+     * auto status = addSecurityKeyUnlock(
+     *     vault,
+     *     key.id,
+     *     SecurityKeyAccess.touch,
+     *     method
+     * );
+     *
+     * if (status == CredentialStatus.ok)
+     *     settings.securityKeyUnlock = method.serialize();
+     * ---
      */
     CredentialStatus addSecurityKeyUnlock(
         EncryptedCredentialVault vault,
@@ -213,21 +241,20 @@ version (linux)
     }
 
     /**
-     * Add a security-key unlock method while supplying a PIN.
+     * Add a security key when setup requires its PIN.
      *
-     * Use this overload when setup requires PIN authorization or when
-     * SecurityKeyAccess.verifiedUser is PIN-backed.
+     * Use this overload after the no-PIN version returns userActionRequired, or
+     * when verifiedUser is intentionally PIN-backed.
      *
      * Params:
-     *     vault = Currently unlocked vault to protect.
-     *     keyId = Runtime id returned by findSecurityKeys().
-     *     access = Required interaction/verification policy.
-     *     pin = Secret PIN buffer; it is not persisted by credentials-d.
-     *     method = Receives persistable non-secret unlock metadata on success.
+     *     vault = Currently unlocked vault.
+     *     keyId = id returned by findSecurityKeys().
+     *     access = Required user interaction.
+     *     pin = PIN entered by the user.
+     *     method = Receives the unlock method to persist.
      *
      * Returns:
-     *     CredentialStatus.ok on success, otherwise the hardware/backend
-     *     outcome.
+     *     ok on success.
      */
     CredentialStatus addSecurityKeyUnlock(
         EncryptedCredentialVault vault,
@@ -253,18 +280,27 @@ version (linux)
     }
 
     /**
-     * Unlock a vault with a security key.
+     * Unlock an opened vault with a connected security key.
      *
-     * Touch methods require physical presence. verifiedUser methods may be
-     * satisfied by built-in verification such as fingerprint.
+     * Restore method from application settings with VaultUnlockMethod.tryParse()
+     * and find the connected key with findSecurityKeys() first.
      *
      * Params:
-     *     vault = Locked vault instance opened from disk.
-     *     keyId = Runtime id of the connected key.
-     *     method = Persisted non-secret unlock method created earlier.
+     *     vault = Locked vault returned by openExisting().
+     *     keyId = id of the connected key.
+     *     method = Previously saved unlock method.
      *
      * Returns:
-     *     CredentialStatus.ok when the vault was unlocked.
+     *     ok when the vault is ready for normal CredentialStore operations.
+     *
+     * Examples:
+     * ---
+     * auto status = unlockWithSecurityKey(
+     *     vault,
+     *     key.id,
+     *     unlockMethod
+     * );
+     * ---
      */
     CredentialStatus unlockWithSecurityKey(
         EncryptedCredentialVault vault,
@@ -283,7 +319,10 @@ version (linux)
     }
 
     /**
-     * Unlock a verified-user security-key method using a PIN.
+     * Unlock a vault with a security key and PIN.
+     *
+     * Use this overload when the saved unlock method requires PIN-backed user
+     * verification.
      */
     CredentialStatus unlockWithSecurityKey(
         EncryptedCredentialVault vault,

@@ -1,5 +1,9 @@
 /**
- * Common credential-store contract and backend capabilities.
+ * Common API for saving, reading, updating and removing application
+ * credentials.
+ *
+ * Write application code against CredentialStore when the same credential
+ * workflow should work with different storage choices.
  */
 module credentials.store;
 
@@ -8,11 +12,11 @@ import credentials.namespace : CredentialNamespace;
 import credentials.secret : SecretBuffer;
 
 /**
- * Normal operation outcomes.
+ * Result of a credential-store operation.
  *
- * Status values are non-secret and safe to report in ordinary diagnostics.
- * Backends should reserve exceptions for programmer errors or exceptional
- * runtime failures that cannot be represented by this contract.
+ * Most application flows need to handle only a small subset, typically ok,
+ * notFound, locked, userCancelled and unavailable. The remaining values let
+ * applications distinguish errors when they need more specific recovery.
  */
 enum CredentialStatus
 {
@@ -65,7 +69,10 @@ enum CredentialStatus
 }
 
 /**
- * Concurrency contract advertised by a store backend.
+ * How one store instance may be used from multiple threads.
+ *
+ * Check this when deciding whether your application may share one store
+ * instance between workers.
  */
 enum StoreConcurrency
 {
@@ -75,7 +82,10 @@ enum StoreConcurrency
 }
 
 /**
- * How credentials are protected at rest by this backend.
+ * Where responsibility for protecting stored credentials lies.
+ *
+ * This is useful when an application offers users more than one storage
+ * choice.
  */
 enum StoreProtection
 {
@@ -85,7 +95,10 @@ enum StoreProtection
 }
 
 /**
- * How access to stored credentials is unlocked.
+ * Who controls access to stored credentials.
+ *
+ * Use this when the UI needs to explain whether unlocking is handled by the
+ * operating system or by the application itself.
  */
 enum StoreUnlockModel
 {
@@ -95,7 +108,10 @@ enum StoreUnlockModel
 }
 
 /**
- * Expected mobility of stored credentials.
+ * Where stored credentials may be available.
+ *
+ * This helps an application distinguish process-only, device-local, portable
+ * and potentially synchronized storage.
  */
 enum StoreMobility
 {
@@ -107,7 +123,10 @@ enum StoreMobility
 }
 
 /**
- * Whether normal operations may block or require user interaction.
+ * Whether normal store operations can block or show user interaction.
+ *
+ * GUI applications can use this to decide whether an operation belongs on a
+ * worker thread.
  */
 enum StoreBlocking
 {
@@ -117,89 +136,121 @@ enum StoreBlocking
 }
 
 /**
- * Material security and behavior properties of one store backend.
+ * Properties of one credential store that can affect application behavior.
  *
- * Capabilities describe properties that the backend actually provides. They
- * must not be inferred from platform name or silently upgraded by fallback.
+ * Read capabilities when choosing a store, presenting storage options to the
+ * user, or deciding where an operation should run.
+ *
+ * Examples:
+ * ---
+ * const caps = store.capabilities;
+ *
+ * if (caps.blocking == StoreBlocking.mayPrompt)
+ * {
+ *     // Run the operation away from the render/UI thread.
+ * }
+ * ---
  */
 struct StoreCapabilities
 {
-    /** Whether credentials survive the lifetime of the store instance/process. */
+    /** Whether saved credentials are intended to survive application restart. */
     bool persistent;
 
-    /** Protection used for credential plaintext while persisted. */
+    /** Where protection of saved credentials is provided. */
     StoreProtection protection;
 
-    /** Who or what controls unlocking of the persisted credentials. */
+    /** Who controls unlocking before saved credentials can be used. */
     StoreUnlockModel unlockModel;
 
-    /** Expected persistence/mobility boundary of stored credentials. */
+    /** Where saved credentials may become available. */
     StoreMobility mobility;
 
     /**
-     * Whether successful remove() confirms that the logical credential record
-     * no longer resolves through this backend.
-     *
-     * This does not claim forensic erasure of storage media.
+     * Whether successful remove() means this store will no longer return the
+     * credential.
      */
     bool confirmsLogicalDeletion;
 
-    /** Whether normal operations can block or prompt the user. */
+    /** Whether normal operations can block or ask the user to interact. */
     StoreBlocking blocking;
 
-    /** Concurrency contract for one store instance. */
+    /** How one store instance may be shared between threads. */
     StoreConcurrency concurrency;
 }
 
 /**
- * Callback used for explicit plaintext acquisition.
+ * Function that receives a credential while it is being used.
  *
- * The credential bytes are read-only and scoped to the callback invocation.
+ * Keep work that needs the secret inside this callback instead of copying the
+ * bytes into long-lived application state.
  */
 alias SecretCallback = void delegate(scope const(ubyte)[] bytes) @safe;
 
 /**
- * Application-independent credential persistence boundary.
+ * Common credential-store interface.
  *
- * Implementations own record persistence and must honor the security contract
- * in `docs/security/THREAT_MODEL.md`.
+ * Use this type when application logic should not care whether credentials are
+ * stored by Linux, Windows, macOS, an encrypted vault or a test store.
  *
- * A store is always bound to one validated application namespace. Handles from
- * a different namespace or store instance must never resolve to a credential
- * by accident.
+ * Every store belongs to one CredentialNamespace and returns CredentialHandle
+ * values that can be persisted in normal application settings.
  *
- * The common interface does not promise thread safety. Callers must inspect
- * `capabilities.concurrency`.
+ * Examples:
+ * ---
+ * CredentialHandle handle;
  *
- * credentials-d does not define a fallback chain. If the selected backend is
- * unavailable, the operation reports that condition instead of silently
- * persisting plaintext or switching to a weaker store.
+ * auto status = store.save(secret, handle);
+ *
+ * if (status == CredentialStatus.ok)
+ * {
+ *     status = store.withSecret(
+ *         handle,
+ *         (scope const(ubyte)[] bytes) @safe
+ *         {
+ *             // Use the credential here.
+ *         }
+ *     );
+ * }
+ * ---
  */
 interface CredentialStore
 {
     /**
-     * Non-secret application namespace owned by this store.
+     * Application namespace this store belongs to.
+     *
+     * Persist or compare the namespace only through CredentialNamespace.
      */
     @property CredentialNamespace credentialNamespace() const
         @nogc nothrow @safe;
 
     /**
-     * Describe backend properties without acquiring a secret.
+     * Describe how this store behaves.
+     *
+     * Use this before scheduling operations or presenting storage choices.
      */
     @property StoreCapabilities capabilities() const @nogc nothrow @safe;
 
     /**
-     * Persist a new credential and return its non-secret handle.
+     * Save a new credential.
      *
-     * The backend must not retain a reference to `secret` beyond the call.
-     * On failure, `handle` is invalid.
+     * Persist handle.serialize() in normal application settings so the
+     * credential can be found again on the next run.
      *
      * Params:
-     *     secret = Owned secret plaintext to persist.
-     *     handle = Receives the opaque non-secret handle on success.
+     *     secret = Credential to save.
+     *     handle = Receives the non-secret handle on success.
      *
      * Returns:
-     *     CredentialStatus.ok on success, otherwise the backend outcome.
+     *     ok on success. handle is invalid for any other result.
+     *
+     * Examples:
+     * ---
+     * CredentialHandle handle;
+     * auto status = store.save(secret, handle);
+     *
+     * if (status == CredentialStatus.ok)
+     *     settings.credentialHandle = handle.serialize();
+     * ---
      */
     CredentialStatus save(
         scope ref const SecretBuffer secret,
@@ -207,18 +258,29 @@ interface CredentialStore
     ) @safe;
 
     /**
-     * Acquire plaintext explicitly for the duration of `callback`.
+     * Use a saved credential.
      *
-     * The callback is invoked exactly once on `ok`, and not invoked for any
-     * other status. Consumer exceptions propagate normally.
+     * Put the operation that needs the credential inside callback. The callback
+     * is called only when the credential was found and made available.
      *
      * Params:
-     *     handle = Opaque handle returned by this backend.
-     *     callback = Receives a scoped read-only plaintext view.
+     *     handle = Handle returned by save() or restored with tryParse().
+     *     callback = Code that uses the credential.
      *
      * Returns:
-     *     CredentialStatus.ok when the callback ran successfully, otherwise
-     *     the lookup/backend outcome.
+     *     ok when callback ran; otherwise the reason the credential could not
+     *     be provided.
+     *
+     * Examples:
+     * ---
+     * auto status = store.withSecret(
+     *     handle,
+     *     (scope const(ubyte)[] token) @safe
+     *     {
+     *         // Send the request that needs token.
+     *     }
+     * );
+     * ---
      */
     CredentialStatus withSecret(
         CredentialHandle handle,
@@ -226,17 +288,22 @@ interface CredentialStore
     ) @safe;
 
     /**
-     * Replace the credential referenced by `handle`.
+     * Replace the value of an existing credential.
      *
-     * Replacement never returns the previous plaintext.
+     * The existing handle stays valid after a successful update.
      *
      * Params:
-     *     handle = Opaque handle of the credential to replace.
-     *     replacement = New secret plaintext.
+     *     handle = Credential to update.
+     *     replacement = New credential value.
      *
      * Returns:
-     *     CredentialStatus.ok on success, notFound if the record no longer
-     *     exists, or another backend outcome.
+     *     ok on success or notFound when the saved credential no longer exists.
+     *
+     * Examples:
+     * ---
+     * auto replacement = SecretBuffer(newTokenBytes);
+     * auto status = store.update(handle, replacement);
+     * ---
      */
     CredentialStatus update(
         CredentialHandle handle,
@@ -244,16 +311,21 @@ interface CredentialStore
     ) @safe;
 
     /**
-     * Remove the logical credential record.
+     * Remove a saved credential.
      *
-     * `notFound` means the handle does not identify a current record.
-     * Physical media erasure is not implied.
+     * After ok, remove the serialized handle from application settings too.
      *
      * Params:
-     *     handle = Opaque handle of the credential to remove.
+     *     handle = Credential to remove.
      *
      * Returns:
-     *     CredentialStatus.ok when the logical record was removed.
+     *     ok when removed or notFound when it was already absent.
+     *
+     * Examples:
+     * ---
+     * if (store.remove(handle) == CredentialStatus.ok)
+     *     settings.credentialHandle = null;
+     * ---
      */
     CredentialStatus remove(CredentialHandle handle) @safe;
 }

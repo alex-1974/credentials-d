@@ -1,5 +1,7 @@
 /**
- * Public macOS credential-store API.
+ * Credential storage for macOS applications.
+ *
+ * Use MacOSCredentialStore for persistent application credentials on macOS.
  */
 module credentials.macos;
 
@@ -8,15 +10,19 @@ import credentials.backend.macos.store :
     MacOSDataProtectionCredentialStore;
 
 /**
- * Credential store backed by the macOS system credential service.
+ * Persistent macOS credential store.
  *
- * A properly signed/provisioned application context is required for production
- * Data Protection Keychain use.
+ * Production applications must run in the signing/provisioning context needed
+ * by macOS for this store.
  *
  * Examples:
  * ---
- * auto ns = CredentialNamespace("org.example.application");
- * auto store = new MacOSCredentialStore(ns);
+ * auto store = new MacOSCredentialStore(
+ *     CredentialNamespace("org.example.application")
+ * );
+ *
+ * CredentialHandle handle;
+ * store.save(secret, handle);
  * ---
  */
 alias MacOSCredentialStore = MacOSDataProtectionCredentialStore;

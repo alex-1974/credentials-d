@@ -1,5 +1,5 @@
 /**
- * Persistent POSIX encrypted-vault CredentialStore.
+ * Encrypted credential vault implementation.
  */
 module credentials.backend.vault.posix_store;
 
@@ -40,19 +40,36 @@ import credentials.store :
     StoreUnlockModel;
 
 /**
- * Application-controlled encrypted credential vault on a hardened POSIX file.
+ * CredentialStore backed by one encrypted vault file.
  *
- * Native OS credential stores remain the normal default for applications.
- * This backend is selected explicitly when an application-controlled vault is
- * required.
+ * Choose this when users need a portable credential file or when the
+ * application must manage its own vault instead of using the operating-system
+ * credential store.
  *
- * The store is bound to one path and one CredentialNamespace. Existing vaults
- * open in the locked state. unlock() retains only the random vault key; the
- * passphrase is not retained.
+ * New vaults are returned unlocked. Existing vaults open locked and must be
+ * unlocked before save(), withSecret(), update() or remove() can be used.
  *
- * Explicit lock() is part of the security contract. The destructor performs a
- * best-effort lock, but D GC finalization timing is not a prompt-destruction
- * guarantee.
+ * Examples:
+ * ---
+ * auto ns = CredentialNamespace("org.example.application");
+ * auto passphrase = SecretBuffer(passphraseBytes);
+ *
+ * EncryptedCredentialVault vault;
+ *
+ * if (EncryptedCredentialVault.openExisting(
+ *     "credentials.vault",
+ *     ns,
+ *     vault
+ * ) == CredentialStatus.ok)
+ * {
+ *     if (vault.unlock(passphrase) == CredentialStatus.ok)
+ *     {
+ *         // Use the normal CredentialStore API.
+ *     }
+ * }
+ *
+ * scope(exit) vault.lock();
+ * ---
  */
 final class EncryptedCredentialVault : CredentialStore
 {
@@ -69,19 +86,32 @@ final class EncryptedCredentialVault : CredentialStore
     }
 
     /**
-     * Create a new encrypted credential vault.
+     * Create a new vault file.
      *
-     * The target path is never silently replaced. On success, the returned
-     * vault is already unlocked.
+     * Use this when setting up a vault for the first time. An existing file at
+     * path is not replaced. On success, result is ready for normal
+     * CredentialStore operations.
      *
      * Params:
-     *     path = Final vault file path.
+     *     path = File to create.
      *     ns = Application credential namespace.
-     *     passphrase = Passphrase used to protect the initial vault key.
-     *     result = Receives the new unlocked vault on success.
+     *     passphrase = Passphrase chosen for this vault.
+     *     result = Receives the unlocked vault.
      *
      * Returns:
-     *     CredentialStatus.ok on success, otherwise the file/crypto outcome.
+     *     ok on success or a status describing why creation failed.
+     *
+     * Examples:
+     * ---
+     * EncryptedCredentialVault vault;
+     *
+     * auto status = EncryptedCredentialVault.createNew(
+     *     "credentials.vault",
+     *     ns,
+     *     passphrase,
+     *     vault
+     * );
+     * ---
      */
     static CredentialStatus createNew(
         string path,
@@ -129,18 +159,33 @@ final class EncryptedCredentialVault : CredentialStore
     }
 
     /**
-     * Open and structurally validate an existing vault in the locked state.
+     * Open an existing vault.
      *
-     * No password KDF or plaintext decryption occurs here.
+     * The returned vault is locked. Call unlock() or unlockWithSecurityKey()
+     * before using its stored credentials.
      *
      * Params:
-     *     path = Existing vault file path.
-     *     ns = Expected application credential namespace.
-     *     result = Receives the locked vault instance on success.
+     *     path = Existing vault file.
+     *     ns = Application credential namespace used when the vault was made.
+     *     result = Receives the locked vault.
      *
      * Returns:
-     *     CredentialStatus.ok on success. corruptedData indicates malformed or
-     *     namespace-incompatible persisted data.
+     *     ok on success or a status describing why the vault could not be
+     *     opened.
+     *
+     * Examples:
+     * ---
+     * EncryptedCredentialVault vault;
+     *
+     * if (EncryptedCredentialVault.openExisting(
+     *     "credentials.vault",
+     *     ns,
+     *     vault
+     * ) == CredentialStatus.ok)
+     * {
+     *     // Choose a configured unlock method.
+     * }
+     * ---
      */
     static CredentialStatus openExisting(
         string path,
@@ -176,15 +221,22 @@ final class EncryptedCredentialVault : CredentialStore
     /**
      * Unlock this vault with its passphrase.
      *
-     * Successful unlock retains only the random vault key; the passphrase is
-     * not retained.
+     * After ok, the normal CredentialStore operations are available until
+     * lock() is called.
      *
      * Params:
-     *     passphrase = Secret passphrase buffer.
+     *     passphrase = Passphrase for this vault.
      *
      * Returns:
-     *     CredentialStatus.ok when unlocked, otherwise the validation/backend
-     *     outcome.
+     *     ok when the vault is unlocked.
+     *
+     * Examples:
+     * ---
+     * if (vault.unlock(passphrase) == CredentialStatus.ok)
+     * {
+     *     // save(), withSecret(), update() and remove() are available.
+     * }
+     * ---
      */
     CredentialStatus unlock(
         scope ref const SecretBuffer passphrase
@@ -225,7 +277,9 @@ final class EncryptedCredentialVault : CredentialStore
     }
 
     /**
-     * Lock the vault immediately by clearing the retained vault key.
+     * Lock the vault now.
+     *
+     * Call this when the application no longer needs credential access.
      */
     void lock() @safe
     {
@@ -236,7 +290,7 @@ final class EncryptedCredentialVault : CredentialStore
     }
 
     /**
-     * Whether this vault currently requires an unlock operation.
+     * Whether unlock() or unlockWithSecurityKey() is required before use.
      */
     @property bool isLocked() const @safe
     {
