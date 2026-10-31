@@ -1282,6 +1282,32 @@ private CredentialStatus mapFidoStatus(int status)
     }
 }
 
+@("FIDO2 UV convenience path rejects touch-only bindings before hardware")
+unittest
+{
+    auto binding = Fido2VaultBinding.trusted(
+        "credentials-d.local",
+        [cast(ubyte)1, 2, 3, 4],
+        Fido2VerificationPolicy.touchOnly
+    );
+
+    ubyte[protectorSaltBytes] salt;
+
+    bool called;
+    const status = withFido2WrappingKeyUserVerification(
+        "/dev/this-path-must-not-be-opened",
+        binding,
+        salt,
+        (scope const(ubyte)[]) @safe
+        {
+            called = true;
+        }
+    );
+
+    assert(status == CredentialStatus.invalidInput);
+    assert(!called);
+}
+
 @("libfido2 status mapping is fail-closed")
 unittest
 {
