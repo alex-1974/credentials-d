@@ -13,4 +13,4 @@ lflags "-framework" "Security" "-framework" "CoreFoundation" platform="osx"
 toolchainRequirements frontend=">=2.111.0"
 
 // Keep generated API docs focused on the supported consumer surface.
-x:ddoxFilterArgs "--unittest-examples" "--min-protection" "Public" "--ex" "credentials.backend."
+x:ddoxFilterArgs "--unittest-examples" "--min-protection" "Public" "--ex" "credentials.backend." "--in" "credentials.macos"
