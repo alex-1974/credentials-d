@@ -69,7 +69,7 @@ final class MockCredentialStore : CredentialStore
         if (forcedWithSecretStatus != CredentialStatus.ok)
             return forcedWithSecretStatus;
 
-        return inner_.withSecret(handle, visitor);
+        return inner_.withSecret(handle, callback);
     }
 
     override CredentialStatus update(
