@@ -29,6 +29,7 @@ version (linux)
 {
     import credentials.backend.vault.posix_protector :
         createVaultUnlockEnvelopeForStore,
+        createVaultUnlockEnvelopeForStoreWithSalt,
         unlockVaultWithEnvelope;
     import credentials.backend.vault.posix_store :
         EncryptedVaultCredentialStore;
@@ -279,6 +280,8 @@ CredentialStatus enrollFido2VaultBinding(
         rpId,
         policy,
         null,
+        null,
+        null,
         binding
     );
 }
@@ -340,6 +343,8 @@ CredentialStatus enrollFido2VaultBindingWithPin(
                 rpId,
                 policy,
                 pinCString,
+                null,
+                null,
                 binding
             );
         }
@@ -443,6 +448,19 @@ version (linux)
     ) @safe
     {
         envelope = VaultUnlockEnvelope.init;
+
+        if (!validPolicy(policy))
+            return CredentialStatus.invalidInput;
+
+        if (supportsHmacSecretMakeCredential(devicePath))
+            return addFido2VaultUnlockMakeCredentialImpl(
+                store,
+                devicePath,
+                rpId,
+                policy,
+                null,
+                envelope
+            );
 
         Fido2VaultBinding binding;
         auto status = enrollFido2VaultBinding(
@@ -570,6 +588,26 @@ version (linux)
 
         if (!validPolicy(policy))
             return CredentialStatus.invalidInput;
+
+        if (supportsHmacSecretMakeCredential(devicePath))
+        {
+            CredentialStatus fastStatus = CredentialStatus.backendFailure;
+            fastStatus = withNativePin(
+                pin,
+                (const(char)* pinCString) @trusted
+                {
+                    return addFido2VaultUnlockMakeCredentialImpl(
+                        store,
+                        devicePath,
+                        rpId,
+                        policy,
+                        pinCString,
+                        envelope
+                    );
+                }
+            );
+            return fastStatus;
+        }
 
         Fido2VaultBinding binding;
         auto status = enrollFido2VaultBindingWithPin(
@@ -757,6 +795,107 @@ version (linux)
     }
 }
 
+version (linux)
+{
+    private bool supportsHmacSecretMakeCredential(
+        string devicePath
+    ) @safe
+    {
+        Fido2Capabilities capabilities;
+        const status =
+            queryFido2Capabilities(
+                devicePath,
+                capabilities
+            );
+
+        return status == CredentialStatus.ok &&
+            capabilities.hmacSecret &&
+            capabilities.hmacSecretMakeCredential;
+    }
+
+    private CredentialStatus addFido2VaultUnlockMakeCredentialImpl(
+        EncryptedVaultCredentialStore store,
+        string devicePath,
+        string rpId,
+        Fido2VerificationPolicy policy,
+        const(char)* pin,
+        out VaultUnlockEnvelope envelope
+    ) @trusted
+    {
+        envelope = VaultUnlockEnvelope.init;
+
+        if (store is null ||
+            !validDevicePath(devicePath) ||
+            !validRpId(rpId) ||
+            !validPolicy(policy))
+            return CredentialStatus.invalidInput;
+
+        ubyte[protectorSaltBytes] salt;
+        ubyte[32] wrappingKey;
+        bool secretReceived;
+
+        scope(exit)
+        {
+            foreach (i; 0 .. wrappingKey.length)
+                volatileStore(
+                    wrappingKey.ptr + i,
+                    cast(ubyte)0
+                );
+        }
+
+        if (!secureRandomBytes(salt[]))
+            return CredentialStatus.backendFailure;
+
+        Fido2VaultBinding binding;
+        const enrollmentStatus = enrollImpl(
+            devicePath,
+            rpId,
+            policy,
+            pin,
+            salt[],
+            (scope const(ubyte)[] secret) @safe
+            {
+                if (secret.length != wrappingKey.length ||
+                    secretReceived)
+                    return;
+
+                wrappingKey[] = secret[];
+                secretReceived = true;
+            },
+            binding
+        );
+
+        if (enrollmentStatus != CredentialStatus.ok)
+            return enrollmentStatus;
+
+        if (!secretReceived)
+            return CredentialStatus.backendFailure;
+
+        const encodedBinding = binding.serialize();
+
+        VaultWrappingKeySource source =
+            (scope const ubyte[protectorSaltBytes] requestedSalt,
+             scope SecretVisitor visitor) @safe
+            {
+                if (visitor is null ||
+                    requestedSalt[] != salt[])
+                    return CredentialStatus.invalidInput;
+
+                visitor(wrappingKey[]);
+                return CredentialStatus.ok;
+            };
+
+        return createVaultUnlockEnvelopeForStoreWithSalt(
+            store,
+            fido2ProtectorKind,
+            encodedBinding,
+            salt,
+            source,
+            envelope
+        );
+    }
+}
+
 private CredentialStatus bindingFromEnvelope(
     scope const VaultUnlockEnvelope envelope,
     out Fido2VaultBinding binding
@@ -786,6 +925,8 @@ private CredentialStatus enrollImpl(
     string rpId,
     Fido2VerificationPolicy policy,
     const(char)* pin,
+    scope const(ubyte)[] makeCredentialSalt,
+    scope SecretVisitor makeCredentialVisitor,
     out Fido2VaultBinding binding
 ) @trusted
 {
@@ -794,6 +935,15 @@ private CredentialStatus enrollImpl(
     if (!validDevicePath(devicePath) ||
         !validRpId(rpId) ||
         !validPolicy(policy))
+        return CredentialStatus.invalidInput;
+
+    const useMakeCredentialSecret =
+        makeCredentialSalt.length != 0 ||
+        makeCredentialVisitor !is null;
+
+    if (useMakeCredentialSecret &&
+        (makeCredentialSalt.length != protectorSaltBytes ||
+         makeCredentialVisitor is null))
         return CredentialStatus.invalidInput;
 
     fido_init(FIDO_DISABLE_U2F_FALLBACK);
@@ -885,6 +1035,18 @@ private CredentialStatus enrollImpl(
     if (rc != FIDO_OK)
         return mapFidoStatus(rc);
 
+    if (useMakeCredentialSecret)
+    {
+        extensions |= FIDO_EXT_HMAC_SECRET_MC;
+        rc = fido_cred_set_hmac_salt(
+            cred,
+            makeCredentialSalt.ptr,
+            makeCredentialSalt.length
+        );
+        if (rc != FIDO_OK)
+            return mapFidoStatus(rc);
+    }
+
     rc = fido_cred_set_extensions(cred, extensions);
     if (rc != FIDO_OK)
         return mapFidoStatus(rc);
@@ -894,6 +1056,34 @@ private CredentialStatus enrollImpl(
     {
         fido_dev_cancel(dev);
         return mapFidoStatus(rc);
+    }
+
+    if (useMakeCredentialSecret)
+    {
+        const flags = fido_cred_flags(cred);
+        const uvPerformed =
+            (flags & CTAP_AUTHDATA_USER_VERIFIED) != 0;
+
+        final switch (policy)
+        {
+            case Fido2VerificationPolicy.userPresence:
+                if (uvPerformed)
+                    return CredentialStatus.unsupported;
+                break;
+
+            case Fido2VerificationPolicy.userVerificationRequired:
+                if (!uvPerformed)
+                    return CredentialStatus.permissionDenied;
+                break;
+        }
+
+        const secretLength = fido_cred_hmac_secret_len(cred);
+        const secret = fido_cred_hmac_secret_ptr(cred);
+
+        if (secret is null || secretLength != 32)
+            return CredentialStatus.unsupported;
+
+        makeCredentialVisitor(secret[0 .. secretLength]);
     }
 
     const idLength = fido_cred_id_len(cred);
