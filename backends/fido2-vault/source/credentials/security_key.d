@@ -51,8 +51,8 @@ struct SecurityKeyCapabilities
     bool supportsSingleStepSetup;
     bool supportsPin;
     bool pinConfigured;
-    bool supportsBuiltInUserVerification;
-    bool builtInUserVerificationConfigured;
+    bool supportsBuiltInVerification;
+    bool builtInVerificationConfigured;
 }
 
 /**
@@ -117,10 +117,10 @@ CredentialStatus getSecurityKeyCapabilities(
         native.hmacSecretMakeCredentialUsable;
     capabilities.supportsPin = native.clientPinSupported;
     capabilities.pinConfigured = native.clientPinConfigured;
-    capabilities.supportsBuiltInUserVerification =
+    capabilities.supportsBuiltInVerification =
         native.builtInUserVerificationSupported;
-    capabilities.builtInUserVerificationConfigured =
-        native.builtInUserVerificationConfigured;
+    capabilities.builtInVerificationConfigured =
+        native.builtInVerificationConfigured;
 
     return CredentialStatus.ok;
 }
