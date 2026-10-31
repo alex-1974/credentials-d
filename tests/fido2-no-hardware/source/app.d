@@ -1,26 +1,52 @@
 module app;
 
 import credentials : CredentialStatus;
-import credentials.backend.fido2 :
-    Fido2Capabilities,
-    Fido2DeviceInfo,
-    discoverFido2Devices,
-    queryFido2Capabilities;
+import credentials.security_key :
+    SecurityKeyAccess,
+    SecurityKeyCapabilities,
+    SecurityKeyInfo,
+    addSecurityKeyUnlock,
+    findSecurityKeys,
+    getSecurityKeyCapabilities,
+    unlockWithSecurityKey;
+import credentials.vault :
+    EncryptedCredentialVault,
+    VaultUnlockMethod;
 
 void main()
 {
-    Fido2DeviceInfo[] devices;
+    SecurityKeyInfo[] keys;
 
-    const status = discoverFido2Devices(devices);
+    const status = findSecurityKeys(keys);
     assert(status == CredentialStatus.ok);
 
-    foreach (const device; devices)
-        assert(device.path.length != 0);
+    foreach (const key; keys)
+        assert(key.id.length != 0);
 
-    Fido2Capabilities capabilities;
+    static assert(__traits(compiles,
+    {
+        EncryptedCredentialVault vault;
+        VaultUnlockMethod method;
+
+        addSecurityKeyUnlock(
+            vault,
+            "runtime-key-id",
+            SecurityKeyAccess.touch,
+            method
+        );
+
+        unlockWithSecurityKey(
+            vault,
+            "runtime-key-id",
+            method
+        );
+    }));
+
+    SecurityKeyCapabilities capabilities;
     assert(
-        queryFido2Capabilities("", capabilities) ==
+        getSecurityKeyCapabilities("", capabilities) ==
         CredentialStatus.invalidInput
     );
-    assert(capabilities.remainingDiscoverableCredentials == -1);
+    assert(!capabilities.supportsVaultUnlock);
+    assert(!capabilities.supportsSingleStepSetup);
 }

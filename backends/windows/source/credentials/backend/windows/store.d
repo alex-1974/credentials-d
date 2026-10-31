@@ -29,7 +29,7 @@ import credentials.secret : SecretBuffer;
 import credentials.store :
     CredentialStatus,
     CredentialStore,
-    SecretVisitor,
+    SecretCallback,
     StoreBlocking,
     StoreCapabilities,
     StoreConcurrency,
@@ -122,8 +122,8 @@ final class WindowsCredentialStore : CredentialStore
     {
         return StoreCapabilities(
             true,
-            StoreProtection.nativeUserCredentialStore,
-            StoreUnlockModel.osManaged,
+            StoreProtection.operatingSystem,
+            StoreUnlockModel.operatingSystem,
             false,
             StoreMobility.localDevice,
             true,
@@ -132,7 +132,7 @@ final class WindowsCredentialStore : CredentialStore
         );
     }
 
-    override CredentialStatus store(
+    override CredentialStatus save(
         scope ref const SecretBuffer secret,
         out CredentialHandle handle
     ) @safe
@@ -143,18 +143,18 @@ final class WindowsCredentialStore : CredentialStore
         }
     }
 
-    override CredentialStatus acquire(
+    override CredentialStatus withSecret(
         CredentialHandle handle,
-        scope SecretVisitor visitor
+        scope SecretCallback callback
     ) @safe
     {
         synchronized (this)
         {
-            return acquireImpl(handle, visitor);
+            return acquireImpl(handle, callback);
         }
     }
 
-    override CredentialStatus replace(
+    override CredentialStatus update(
         CredentialHandle handle,
         scope ref const SecretBuffer replacement
     ) @safe
@@ -221,10 +221,10 @@ final class WindowsCredentialStore : CredentialStore
 
     private CredentialStatus acquireImpl(
         CredentialHandle handle,
-        scope SecretVisitor visitor
+        scope SecretCallback callback
     ) @trusted
     {
-        if (!validHandle(handle) || visitor is null)
+        if (!validHandle(handle) || callback is null)
             return CredentialStatus.invalidInput;
 
         auto target = nativeTarget(handle.serialize());
@@ -258,7 +258,7 @@ final class WindowsCredentialStore : CredentialStore
             ];
         }
 
-        visitor(bytes);
+        callback(bytes);
         return CredentialStatus.ok;
     }
 
@@ -355,7 +355,7 @@ final class WindowsCredentialStore : CredentialStore
      * Narrow trusted WinCred write boundary.
      *
      * The caller owns `target` for this call and `bytes` is scoped to the
-     * explicit SecretBuffer visitor. WinCred consumes both synchronously.
+     * explicit SecretBuffer callback. WinCred consumes both synchronously.
      */
     private static CredentialStatus writeNative(
         const(wchar)* target,

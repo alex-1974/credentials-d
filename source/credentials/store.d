@@ -48,8 +48,8 @@ enum StoreConcurrency
 enum StoreProtection
 {
     memoryOnly,
-    nativeUserCredentialStore,
-    applicationEncryptedVault
+    operatingSystem,
+    encryptedVault
 }
 
 /**
@@ -58,8 +58,8 @@ enum StoreProtection
 enum StoreUnlockModel
 {
     none,
-    osManaged,
-    applicationManaged
+    operatingSystem,
+    application
 }
 
 /**
@@ -107,7 +107,7 @@ struct StoreCapabilities
  *
  * The credential bytes are read-only and scoped to the callback invocation.
  */
-alias SecretVisitor = void delegate(scope const(ubyte)[] bytes) @safe;
+alias SecretCallback = void delegate(scope const(ubyte)[] bytes) @safe;
 
 /**
  * Application-independent credential persistence boundary.
@@ -145,20 +145,20 @@ interface CredentialStore
      * The backend must not retain a reference to `secret` beyond the call.
      * On failure, `handle` is invalid.
      */
-    CredentialStatus store(
+    CredentialStatus save(
         scope ref const SecretBuffer secret,
         out CredentialHandle handle
     ) @safe;
 
     /**
-     * Acquire plaintext explicitly for the duration of `visitor`.
+     * Acquire plaintext explicitly for the duration of `callback`.
      *
-     * The visitor is invoked exactly once on `ok`, and not invoked for any
+     * The callback is invoked exactly once on `ok`, and not invoked for any
      * other status. Consumer exceptions propagate normally.
      */
-    CredentialStatus acquire(
+    CredentialStatus withSecret(
         CredentialHandle handle,
-        scope SecretVisitor visitor
+        scope SecretCallback callback
     ) @safe;
 
     /**
@@ -166,7 +166,7 @@ interface CredentialStore
      *
      * Replacement never returns the previous plaintext.
      */
-    CredentialStatus replace(
+    CredentialStatus update(
         CredentialHandle handle,
         scope ref const SecretBuffer replacement
     ) @safe;

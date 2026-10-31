@@ -13,7 +13,7 @@ import credentials.secret : SecretBuffer;
 import credentials.store :
     CredentialStatus,
     CredentialStore,
-    SecretVisitor,
+    SecretCallback,
     StoreBlocking,
     StoreCapabilities,
     StoreConcurrency,
@@ -127,8 +127,8 @@ final class LinuxSecretServiceStore : CredentialStore
     {
         return StoreCapabilities(
             true,
-            StoreProtection.nativeUserCredentialStore,
-            StoreUnlockModel.osManaged,
+            StoreProtection.operatingSystem,
+            StoreUnlockModel.operatingSystem,
             false,
             // Secret Service does not promise that provider storage can never
             // roam/synchronize. Do not claim local-device-only protection.
@@ -139,7 +139,7 @@ final class LinuxSecretServiceStore : CredentialStore
         );
     }
 
-    override CredentialStatus store(
+    override CredentialStatus save(
         scope ref const SecretBuffer secret,
         out CredentialHandle handle
     ) @safe
@@ -150,18 +150,18 @@ final class LinuxSecretServiceStore : CredentialStore
         }
     }
 
-    override CredentialStatus acquire(
+    override CredentialStatus withSecret(
         CredentialHandle handle,
-        scope SecretVisitor visitor
+        scope SecretCallback callback
     ) @safe
     {
         synchronized (this)
         {
-            return acquireImpl(handle, visitor);
+            return acquireImpl(handle, callback);
         }
     }
 
-    override CredentialStatus replace(
+    override CredentialStatus update(
         CredentialHandle handle,
         scope ref const SecretBuffer replacement
     ) @safe
@@ -245,10 +245,10 @@ final class LinuxSecretServiceStore : CredentialStore
 
     private CredentialStatus acquireImpl(
         CredentialHandle handle,
-        scope SecretVisitor visitor
+        scope SecretCallback callback
     ) @trusted
     {
-        if (visitor is null)
+        if (callback is null)
             return CredentialStatus.invalidInput;
 
         string locator;
@@ -309,7 +309,7 @@ final class LinuxSecretServiceStore : CredentialStore
         if (length != 0)
             bytes = cast(const(ubyte)[]) data[0 .. length];
 
-        visitor(bytes);
+        callback(bytes);
         return CredentialStatus.ok;
     }
 

@@ -10,18 +10,19 @@ import credentials :
     CredentialNamespace,
     CredentialStatus,
     SecretBuffer,
-    SecretVisitor;
-import credentials.backend.fido2 :
-    Fido2Capabilities,
-    Fido2DeviceInfo,
+    SecretCallback;
+import credentials.backend.fido2.binding :
     Fido2VaultBinding,
     Fido2VerificationPolicy,
+    fido2ProtectorKind;
+import credentials.backend.fido2.protector :
+    Fido2Capabilities,
+    Fido2DeviceInfo,
     addFido2TouchVaultUnlockWithEnrollmentPin,
     addFido2UserVerificationVaultUnlock,
     addFido2VaultUnlock,
     addFido2VaultUnlockWithPin,
     discoverFido2Devices,
-    fido2ProtectorKind,
     queryFido2Capabilities,
     enrollFido2VaultBinding,
     enrollFido2VaultBindingWithPin,
@@ -33,11 +34,13 @@ import credentials.backend.fido2 :
     withFido2WrappingKey,
     withFido2WrappingKeyUserVerification,
     withFido2WrappingKeyWithPin;
-import credentials.backend.vault :
-    EncryptedVaultCredentialStore,
-    VaultUnlockEnvelope,
+import credentials.vault :
+    EncryptedCredentialVault,
+    VaultUnlockMethod;
+import credentials.backend.vault.posix_protector :
+    createVaultUnlockMethodForStore;
+import credentials.backend.vault.protector :
     VaultWrappingKeySource,
-    createVaultUnlockEnvelopeForStore,
     protectorSaltBytes;
 import std.conv : to;
 import std.file :
@@ -483,11 +486,11 @@ private CredentialStatus derive(
 
 private CredentialStatus addEnvelope(
     const Options options,
-    EncryptedVaultCredentialStore store,
+    EncryptedCredentialVault store,
     string devicePath,
     scope ref const SecretBuffer pin,
     string label,
-    out VaultUnlockEnvelope envelope
+    out VaultUnlockMethod envelope
 )
 {
     Fido2Capabilities capabilities;
@@ -550,7 +553,7 @@ private CredentialStatus addEnvelope(
 
     report(label, "_enrollment_path=makecredential-plus-getassertion");
 
-    envelope = VaultUnlockEnvelope.init;
+    envelope = VaultUnlockMethod.init;
 
     Fido2VaultBinding binding;
     auto status = enroll(
@@ -567,7 +570,7 @@ private CredentialStatus addEnvelope(
 
     VaultWrappingKeySource source =
         (scope const ubyte[protectorSaltBytes] salt,
-         scope SecretVisitor visitor) @safe
+         scope SecretCallback visitor) @safe
         {
             ubyte[32] output;
             scope(exit) wipe(output[]);
@@ -589,7 +592,7 @@ private CredentialStatus addEnvelope(
 
     promptTouch(label ~ " hmac-secret key derivation.");
 
-    return createVaultUnlockEnvelopeForStore(
+    return createVaultUnlockMethodForStore(
         store,
         fido2ProtectorKind,
         encodedBinding,
@@ -600,9 +603,9 @@ private CredentialStatus addEnvelope(
 
 private CredentialStatus unlockEnvelope(
     const Options options,
-    EncryptedVaultCredentialStore store,
+    EncryptedCredentialVault store,
     string devicePath,
-    scope const VaultUnlockEnvelope envelope,
+    scope const VaultUnlockMethod envelope,
     scope ref const SecretBuffer pin,
     string touchAction
 )
@@ -701,8 +704,8 @@ private bool findDevicePresent(
     return findDevice(devices, path, ignored);
 }
 
-private VaultUnlockEnvelope withReplacementBinding(
-    scope const VaultUnlockEnvelope original,
+private VaultUnlockMethod withReplacementBinding(
+    scope const VaultUnlockMethod original,
     scope const Fido2VaultBinding replacement
 )
 {
@@ -747,9 +750,9 @@ private VaultUnlockEnvelope withReplacementBinding(
 
     rewritten[bindingOffset .. $] = newBinding[];
 
-    VaultUnlockEnvelope result;
+    VaultUnlockMethod result;
     enforce(
-        VaultUnlockEnvelope.tryParse(rewritten, result),
+        VaultUnlockMethod.tryParse(rewritten, result),
         "wrong-credential envelope did not parse"
     );
     return result;
@@ -1077,9 +1080,9 @@ void main(string[] args)
             "synthetic-qualification-passphrase-v1"
     );
 
-    EncryptedVaultCredentialStore store;
+    EncryptedCredentialVault store;
     enforceStatus(
-        EncryptedVaultCredentialStore.createNew(
+        EncryptedCredentialVault.createNew(
             vaultPath,
             ns,
             passphrase,
@@ -1099,13 +1102,13 @@ void main(string[] args)
 
     CredentialHandle handle;
     enforceStatus(
-        store.store(syntheticSecret, handle),
+        store.save(syntheticSecret, handle),
         CredentialStatus.ok,
         "store synthetic credential"
     );
     enforce(handle.valid, "synthetic handle not returned");
 
-    VaultUnlockEnvelope envelopeA;
+    VaultUnlockMethod envelopeA;
     auto envelopeAStatus = addEnvelope(
         options,
         store,
@@ -1146,9 +1149,9 @@ void main(string[] args)
 
     const persistedA =
         cast(ubyte[])read(envelopeAPath);
-    VaultUnlockEnvelope parsedEnvelopeA;
+    VaultUnlockMethod parsedEnvelopeA;
     enforce(
-        VaultUnlockEnvelope.tryParse(
+        VaultUnlockMethod.tryParse(
             persistedA,
             parsedEnvelopeA
         ),
@@ -1157,9 +1160,9 @@ void main(string[] args)
 
     store.lock();
 
-    EncryptedVaultCredentialStore reopened;
+    EncryptedCredentialVault reopened;
     enforceStatus(
-        EncryptedVaultCredentialStore.openExisting(
+        EncryptedCredentialVault.openExisting(
             vaultPath,
             ns,
             reopened
@@ -1184,7 +1187,7 @@ void main(string[] args)
 
     bool acquired;
     enforceStatus(
-        reopened.acquire(
+        reopened.withSecret(
             handle,
             (scope const(ubyte)[] bytes) @safe
             {
@@ -1214,9 +1217,9 @@ void main(string[] args)
     );
     tampered[firstWrappedKeyByte] ^= 0x01;
 
-    VaultUnlockEnvelope tamperedEnvelope;
+    VaultUnlockMethod tamperedEnvelope;
     enforce(
-        VaultUnlockEnvelope.tryParse(
+        VaultUnlockMethod.tryParse(
             tampered,
             tamperedEnvelope
         ),
@@ -1312,7 +1315,7 @@ void main(string[] args)
 
     if (hasDeviceB)
     {
-        VaultUnlockEnvelope envelopeB;
+        VaultUnlockMethod envelopeB;
         enforceStatus(
             addEnvelope(
                 options,
@@ -1331,9 +1334,9 @@ void main(string[] args)
 
         const persistedB =
             cast(ubyte[])read(envelopeBPath);
-        VaultUnlockEnvelope parsedEnvelopeB;
+        VaultUnlockMethod parsedEnvelopeB;
         enforce(
-            VaultUnlockEnvelope.tryParse(
+            VaultUnlockMethod.tryParse(
                 persistedB,
                 parsedEnvelopeB
             ),
@@ -1360,7 +1363,7 @@ void main(string[] args)
 
         bool backupAcquired;
         enforceStatus(
-            reopened.acquire(
+            reopened.withSecret(
                 handle,
                 (scope const(ubyte)[] bytes) @safe
                 {

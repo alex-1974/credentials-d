@@ -3,7 +3,7 @@
  *
  * This target deliberately exercises only structural parsing. It does not
  * accept a passphrase, invoke Argon2, decrypt payload data, or expose a
- * SecretVisitor.
+ * SecretCallback.
  */
 module credentials.backend.vault.header_fuzz;
 

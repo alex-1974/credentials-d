@@ -79,7 +79,7 @@ struct Fido2VaultBinding
     }
 
     /**
-     * Serialize the binding for inclusion in a VaultUnlockEnvelope.
+     * Serialize the binding for inclusion in a VaultUnlockMethod.
      */
     ubyte[] serialize() const @safe
     in (valid)

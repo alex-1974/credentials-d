@@ -13,7 +13,7 @@ import credentials.secret : SecretBuffer;
 import credentials.store :
     CredentialStatus,
     CredentialStore,
-    SecretVisitor,
+    SecretCallback,
     StoreBlocking,
     StoreCapabilities,
     StoreConcurrency,
@@ -56,8 +56,8 @@ final class MacOSDataProtectionCredentialStore : CredentialStore
     {
         return StoreCapabilities(
             true,
-            StoreProtection.nativeUserCredentialStore,
-            StoreUnlockModel.osManaged,
+            StoreProtection.operatingSystem,
+            StoreUnlockModel.operatingSystem,
             false,
             StoreMobility.localDevice,
             true,
@@ -66,7 +66,7 @@ final class MacOSDataProtectionCredentialStore : CredentialStore
         );
     }
 
-    override CredentialStatus store(
+    override CredentialStatus save(
         scope ref const SecretBuffer secret,
         out CredentialHandle handle
     ) @safe
@@ -77,18 +77,18 @@ final class MacOSDataProtectionCredentialStore : CredentialStore
         }
     }
 
-    override CredentialStatus acquire(
+    override CredentialStatus withSecret(
         CredentialHandle handle,
-        scope SecretVisitor visitor
+        scope SecretCallback callback
     ) @safe
     {
         synchronized (this)
         {
-            return acquireImpl(handle, visitor);
+            return acquireImpl(handle, callback);
         }
     }
 
-    override CredentialStatus replace(
+    override CredentialStatus update(
         CredentialHandle handle,
         scope ref const SecretBuffer replacement
     ) @safe
@@ -144,10 +144,10 @@ final class MacOSDataProtectionCredentialStore : CredentialStore
 
     private CredentialStatus acquireImpl(
         CredentialHandle handle,
-        scope SecretVisitor visitor
+        scope SecretCallback callback
     ) @trusted
     {
-        if (visitor is null)
+        if (callback is null)
             return CredentialStatus.invalidInput;
 
         string locator;
@@ -199,7 +199,7 @@ final class MacOSDataProtectionCredentialStore : CredentialStore
         if (length != 0)
             bytes = ptr[0 .. cast(size_t) length];
 
-        visitor(bytes);
+        callback(bytes);
         return CredentialStatus.ok;
     }
 

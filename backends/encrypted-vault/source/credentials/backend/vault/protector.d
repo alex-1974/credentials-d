@@ -18,7 +18,7 @@ import credentials.namespace : CredentialNamespace;
 import credentials.random : secureRandomBytes;
 import credentials.store :
     CredentialStatus,
-    SecretVisitor;
+    SecretCallback;
 
 enum size_t protectorSaltBytes = 32;
 enum size_t maximumProtectorKindBytes = 32;
@@ -32,7 +32,7 @@ enum size_t maximumProtectorBindingBytes = 4096;
  */
 alias VaultWrappingKeySource = CredentialStatus delegate(
     scope const ubyte[protectorSaltBytes] salt,
-    scope SecretVisitor visitor
+    scope SecretCallback visitor
 ) @safe;
 
 private enum ubyte[8] envelopeMagic =
@@ -51,7 +51,7 @@ private enum size_t fixedEnvelopeBytes =
  * The envelope binds one external protector to one vault id, namespace and
  * opaque protector binding. Tampering is detected by the vault-key AEAD.
  */
-struct VaultUnlockEnvelope
+struct VaultUnlockMethod
 {
     private string kind_;
     private ubyte[] binding_;
@@ -110,10 +110,10 @@ struct VaultUnlockEnvelope
      */
     static bool tryParse(
         scope const(ubyte)[] input,
-        out VaultUnlockEnvelope envelope
+        out VaultUnlockMethod envelope
     ) @safe
     {
-        envelope = VaultUnlockEnvelope.init;
+        envelope = VaultUnlockMethod.init;
 
         if (input.length < fixedEnvelopeBytes)
             return false;
@@ -198,21 +198,21 @@ alias RecoveredVaultKeyConsumer = CredentialStatus delegate(
  * The envelope is independent of the persistence backend. Multiple independent
  * envelopes may be retained for one vault.
  */
-CredentialStatus createVaultUnlockEnvelope(
+CredentialStatus createVaultUnlockMethod(
     CredentialNamespace ns,
     scope const ubyte[16] vaultId,
     scope const(ubyte)[] vaultKey,
     string protectorKind,
     scope const(ubyte)[] protectorBinding,
     scope VaultWrappingKeySource keySource,
-    out VaultUnlockEnvelope envelope
+    out VaultUnlockMethod envelope
 ) @safe
 {
     ubyte[protectorSaltBytes] salt;
     if (!secureRandomBytes(salt[]))
         return CredentialStatus.backendFailure;
 
-    return createVaultUnlockEnvelopeWithSalt(
+    return createVaultUnlockMethodWithSalt(
         ns,
         vaultId,
         vaultKey,
@@ -230,7 +230,7 @@ CredentialStatus createVaultUnlockEnvelope(
  *
  * Callers remain responsible for generating a fresh unpredictable salt.
  */
-package(credentials.backend) CredentialStatus createVaultUnlockEnvelopeWithSalt(
+package(credentials.backend) CredentialStatus createVaultUnlockMethodWithSalt(
     CredentialNamespace ns,
     scope const ubyte[16] vaultId,
     scope const(ubyte)[] vaultKey,
@@ -238,10 +238,10 @@ package(credentials.backend) CredentialStatus createVaultUnlockEnvelopeWithSalt(
     scope const(ubyte)[] protectorBinding,
     scope const ubyte[protectorSaltBytes] salt,
     scope VaultWrappingKeySource keySource,
-    out VaultUnlockEnvelope envelope
+    out VaultUnlockMethod envelope
 ) @safe
 {
-    envelope = VaultUnlockEnvelope.init;
+    envelope = VaultUnlockMethod.init;
 
     if (!ns.valid ||
         vaultKey.length != vaultKeyBytes ||
@@ -333,7 +333,7 @@ package(credentials.backend) CredentialStatus createVaultUnlockEnvelopeWithSalt(
 CredentialStatus recoverVaultKeyFromEnvelope(
     CredentialNamespace ns,
     scope const ubyte[16] currentVaultId,
-    scope const VaultUnlockEnvelope envelope,
+    scope const VaultUnlockMethod envelope,
     scope VaultWrappingKeySource keySource,
     scope RecoveredVaultKeyConsumer consumer
 ) @safe
@@ -659,10 +659,10 @@ private bool takeFixed(size_t N)(
 @("protector envelope parser rejects malformed input")
 unittest
 {
-    VaultUnlockEnvelope envelope;
+    VaultUnlockMethod envelope;
 
-    assert(!VaultUnlockEnvelope.tryParse([], envelope));
-    assert(!VaultUnlockEnvelope.tryParse(
+    assert(!VaultUnlockMethod.tryParse([], envelope));
+    assert(!VaultUnlockMethod.tryParse(
         cast(const(ubyte)[])"CREDKEY1",
         envelope
     ));

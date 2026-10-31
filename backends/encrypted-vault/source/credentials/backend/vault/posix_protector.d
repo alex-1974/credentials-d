@@ -6,12 +6,12 @@ module credentials.backend.vault.posix_protector;
 version (linux):
 
 import credentials.backend.vault.posix_store :
-    EncryptedVaultCredentialStore;
+    EncryptedCredentialVault;
 import credentials.backend.vault.protector :
-    VaultUnlockEnvelope,
+    VaultUnlockMethod,
     VaultWrappingKeySource,
-    createVaultUnlockEnvelope,
-    createVaultUnlockEnvelopeWithSalt,
+    createVaultUnlockMethod,
+    createVaultUnlockMethodWithSalt,
     recoverVaultKeyFromEnvelope;
 import credentials.backend.vault.sodium :
     vaultKeyBytes,
@@ -24,15 +24,15 @@ import credentials.store : CredentialStatus;
  * One ephemeral stack copy of the vault key is made while the store is locked,
  * then zeroized after wrapping.
  */
-CredentialStatus createVaultUnlockEnvelopeForStore(
-    EncryptedVaultCredentialStore store,
+CredentialStatus createVaultUnlockMethodForStore(
+    EncryptedCredentialVault store,
     string protectorKind,
     scope const(ubyte)[] protectorBinding,
     scope VaultWrappingKeySource keySource,
-    out VaultUnlockEnvelope envelope
+    out VaultUnlockMethod envelope
 ) @safe
 {
-    envelope = VaultUnlockEnvelope.init;
+    envelope = VaultUnlockMethod.init;
 
     if (store is null)
         return CredentialStatus.invalidInput;
@@ -45,7 +45,7 @@ CredentialStatus createVaultUnlockEnvelopeForStore(
     if (status != CredentialStatus.ok)
         return status;
 
-    return createVaultUnlockEnvelope(
+    return createVaultUnlockMethod(
         store.credentialNamespace,
         vaultId,
         vaultKey[],
@@ -60,16 +60,16 @@ CredentialStatus createVaultUnlockEnvelopeForStore(
  * Internal sibling-backend variant for protectors that already selected the
  * envelope salt before deriving their wrapping key.
  */
-package(credentials.backend) CredentialStatus createVaultUnlockEnvelopeForStoreWithSalt(
-    EncryptedVaultCredentialStore store,
+package(credentials.backend) CredentialStatus createVaultUnlockMethodForStoreWithSalt(
+    EncryptedCredentialVault store,
     string protectorKind,
     scope const(ubyte)[] protectorBinding,
     scope const ubyte[32] salt,
     scope VaultWrappingKeySource keySource,
-    out VaultUnlockEnvelope envelope
+    out VaultUnlockMethod envelope
 ) @safe
 {
-    envelope = VaultUnlockEnvelope.init;
+    envelope = VaultUnlockMethod.init;
 
     if (store is null)
         return CredentialStatus.invalidInput;
@@ -82,7 +82,7 @@ package(credentials.backend) CredentialStatus createVaultUnlockEnvelopeForStoreW
     if (status != CredentialStatus.ok)
         return status;
 
-    return createVaultUnlockEnvelopeWithSalt(
+    return createVaultUnlockMethodWithSalt(
         store.credentialNamespace,
         vaultId,
         vaultKey[],
@@ -98,8 +98,8 @@ package(credentials.backend) CredentialStatus createVaultUnlockEnvelopeForStoreW
  * Unlock a persistent vault through an external protector envelope.
  */
 CredentialStatus unlockVaultWithEnvelope(
-    EncryptedVaultCredentialStore store,
-    scope const VaultUnlockEnvelope envelope,
+    EncryptedCredentialVault store,
+    scope const VaultUnlockMethod envelope,
     scope VaultWrappingKeySource keySource
 ) @safe
 {

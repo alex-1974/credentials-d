@@ -105,11 +105,13 @@ Bindings are bounded and canonically serialized.
 ## Authenticator capability discovery
 
 The optional FIDO2 package exposes non-secret runtime capability discovery
-through `queryFido2Capabilities()`. The implementation uses CTAP
-`authenticatorGetInfo` through libfido2 and does not create a credential,
-derive a secret, request a PIN, or require user presence.
+through the consumer-facing `getSecurityKeyCapabilities()` facade. Internally,
+the implementation uses CTAP `authenticatorGetInfo` through libfido2 and does
+not create a credential, derive a secret, request a PIN, or require user
+presence.
 
-The returned `Fido2Capabilities` describes only standardized capabilities:
+The internal capability record preserves standardized protocol details, while
+the public `SecurityKeyCapabilities` exposes only consumer-relevant properties:
 
 - `hmac-secret` and CTAP 2.2 `hmac-secret-mc`;
 - `credProtect`;
@@ -130,7 +132,8 @@ failure through the normal fail-closed status handling.
 
 ## RP id
 
-The RP id is supplied by the consumer when enrolling the protector.
+The RP id is derived internally from the vault's `CredentialNamespace`.
+Consumers do not supply protocol-specific relying-party identifiers.
 
 credentials-d validates a conservative lowercase DNS-like syntax and maximum
 length. The RP id is part of authenticator credential scope and therefore part
@@ -169,34 +172,13 @@ application profile, account name, email address, or other user identity.
 This keeps the hmac-secret derivation consistently in the non-UV branch while
 remaining compatible with older CTAP2 authenticators.
 
-For consumers that want to state this policy explicitly,
-`Fido2VerificationPolicy.touchOnly` is a wire-compatible alias of
-`userPresence`. Existing serialized bindings remain unchanged.
+The public facade expresses this as
+`SecurityKeyAccess.touch`. Existing serialized bindings remain unchanged.
 
-A convenience pair makes the lifecycle explicit:
-
-```d
-VaultUnlockEnvelope envelope;
-
-auto status = addFido2TouchVaultUnlockWithEnrollmentPin(
-    store,
-    devicePath,
-    rpId,
-    enrollmentPin,
-    envelope
-);
-
-// Later, during normal use:
-status = unlockVaultWithFido2Touch(
-    store,
-    devicePath,
-    envelope
-);
-```
-
-The first function exists for authenticators that require PIN authorization
-during credential creation. The second deliberately has no PIN parameter:
-normal unlock is authenticator presence plus physical touch only.
+Consumers add and use a method through `addSecurityKeyUnlock()` and
+`unlockWithSecurityKey()`. If setup requires PIN authorization, the overload
+accepting `SecretBuffer` is used; normal touch-only unlock has no PIN
+requirement.
 
 ### userVerificationRequired
 
@@ -208,28 +190,11 @@ normal unlock is authenticator presence plus physical touch only.
 - a PIN may be supplied through `SecretBuffer`, but it is not part of the
   persisted policy.
 
-The PIN-free built-in-UV helpers are:
-
-```d
-auto status = addFido2UserVerificationVaultUnlock(
-    store,
-    devicePath,
-    rpId,
-    envelope
-);
-
-// Later:
-status = unlockVaultWithFido2UserVerification(
-    store,
-    devicePath,
-    envelope
-);
-```
-
-Both helpers require `userVerificationRequired`; the touch-only convenience
-API conversely rejects UV-required bindings. This keeps the public API aligned
-with the persisted security policy while leaving the concrete UV modality
-(fingerprint, another built-in modality, or PIN) to the authenticator.
+The public facade expresses this policy as
+`SecurityKeyAccess.verifiedUser`. The same `addSecurityKeyUnlock()` /
+`unlockWithSecurityKey()` pair is used; the concrete verification modality
+(fingerprint, another built-in modality, or PIN) remains an authenticator
+detail.
 
 If the authenticator cannot satisfy the requested UV/credProtect policy,
 enrollment fails. The implementation does not silently downgrade to touch-only.
@@ -301,7 +266,7 @@ No vault-envelope or FIDO2-binding format version changes.
 
 FIDO2 does not modify encrypted-vault format version 1.
 
-Instead, `VaultUnlockEnvelope` is a small independently persistable,
+Instead, `VaultUnlockMethod` is a small independently persistable,
 non-secret wrapper containing:
 
 - envelope magic/version;

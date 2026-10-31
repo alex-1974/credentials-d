@@ -31,7 +31,7 @@ import credentials.secret : SecretBuffer;
 import credentials.store :
     CredentialStatus,
     CredentialStore,
-    SecretVisitor,
+    SecretCallback,
     StoreBlocking,
     StoreCapabilities,
     StoreConcurrency,
@@ -54,7 +54,7 @@ import credentials.store :
  * best-effort lock, but D GC finalization timing is not a prompt-destruction
  * guarantee.
  */
-final class EncryptedVaultCredentialStore : CredentialStore
+final class EncryptedCredentialVault : CredentialStore
 {
     private string path_;
     private CredentialNamespace namespace_;
@@ -77,7 +77,7 @@ final class EncryptedVaultCredentialStore : CredentialStore
         string path,
         CredentialNamespace ns,
         scope ref const SecretBuffer passphrase,
-        out EncryptedVaultCredentialStore result
+        out EncryptedCredentialVault result
     ) @safe
     {
         result = null;
@@ -102,7 +102,7 @@ final class EncryptedVaultCredentialStore : CredentialStore
             return mapCreateFile(fileStatus);
 
         auto candidate =
-            new EncryptedVaultCredentialStore(path, ns);
+            new EncryptedCredentialVault(path, ns);
 
         coreStatus = unlockVaultSession(
             image,
@@ -126,7 +126,7 @@ final class EncryptedVaultCredentialStore : CredentialStore
     static CredentialStatus openExisting(
         string path,
         CredentialNamespace ns,
-        out EncryptedVaultCredentialStore result
+        out EncryptedCredentialVault result
     ) @safe
     {
         result = null;
@@ -150,7 +150,7 @@ final class EncryptedVaultCredentialStore : CredentialStore
         if (coreStatus != VaultCoreStatus.ok)
             return mapCore(coreStatus);
 
-        result = new EncryptedVaultCredentialStore(path, ns);
+        result = new EncryptedCredentialVault(path, ns);
         return CredentialStatus.ok;
     }
 
@@ -227,8 +227,8 @@ final class EncryptedVaultCredentialStore : CredentialStore
     {
         return StoreCapabilities(
             true,
-            StoreProtection.applicationEncryptedVault,
-            StoreUnlockModel.applicationManaged,
+            StoreProtection.encryptedVault,
+            StoreUnlockModel.application,
             false,
             StoreMobility.portableFile,
             true,
@@ -237,7 +237,7 @@ final class EncryptedVaultCredentialStore : CredentialStore
         );
     }
 
-    override CredentialStatus store(
+    override CredentialStatus save(
         scope ref const SecretBuffer secret,
         out CredentialHandle handle
     ) @safe
@@ -290,9 +290,9 @@ final class EncryptedVaultCredentialStore : CredentialStore
         }
     }
 
-    override CredentialStatus acquire(
+    override CredentialStatus withSecret(
         CredentialHandle handle,
-        scope SecretVisitor visitor
+        scope SecretCallback callback
     ) @safe
     {
         synchronized (this)
@@ -302,7 +302,7 @@ final class EncryptedVaultCredentialStore : CredentialStore
 
             string locator;
             if (!locatorFromHandle(handle, locator) ||
-                visitor is null)
+                callback is null)
                 return CredentialStatus.invalidInput;
 
             VaultFileLock fileLock;
@@ -321,7 +321,7 @@ final class EncryptedVaultCredentialStore : CredentialStore
                 namespace_,
                 session_,
                 locator,
-                visitor
+                callback
             );
 
             if (coreStatus != VaultCoreStatus.ok)
@@ -331,7 +331,7 @@ final class EncryptedVaultCredentialStore : CredentialStore
         }
     }
 
-    override CredentialStatus replace(
+    override CredentialStatus update(
         CredentialHandle handle,
         scope ref const SecretBuffer replacement
     ) @safe

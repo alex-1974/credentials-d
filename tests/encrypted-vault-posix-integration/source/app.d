@@ -16,14 +16,15 @@ import credentials :
     CredentialNamespace,
     CredentialStatus,
     SecretBuffer,
-    SecretVisitor;
-import credentials.backend.vault :
-    EncryptedVaultCredentialStore,
-    VaultUnlockEnvelope,
-    VaultWrappingKeySource,
-    createVaultUnlockEnvelopeForStore,
+    SecretCallback;
+import credentials.vault :
+    EncryptedCredentialVault,
+    VaultUnlockMethod;
+import credentials.backend.vault.posix_protector :
+    createVaultUnlockMethodForStore,
     unlockVaultWithEnvelope;
 import credentials.backend.vault.protector :
+    VaultWrappingKeySource,
     protectorSaltBytes;
 import std.conv : to;
 import std.file :
@@ -86,8 +87,8 @@ void main()
     auto wrongPassphrase =
         SecretBuffer(cast(const(ubyte)[]) "wrong test passphrase");
 
-    EncryptedVaultCredentialStore store;
-    assert(EncryptedVaultCredentialStore.createNew(
+    EncryptedCredentialVault store;
+    assert(EncryptedCredentialVault.createNew(
         vaultPath,
         ns,
         passphrase,
@@ -100,11 +101,11 @@ void main()
     auto secret = SecretBuffer(binary);
 
     CredentialHandle handle;
-    assert(store.store(secret, handle) == CredentialStatus.ok);
+    assert(store.save(secret, handle) == CredentialStatus.ok);
     assert(handle.valid);
 
     bool acquired;
-    assert(store.acquire(
+    assert(store.withSecret(
         handle,
         (scope const(ubyte)[] bytes) @safe
         {
@@ -119,7 +120,7 @@ void main()
     assert(store.isLocked);
 
     bool calledWhileLocked;
-    assert(store.acquire(
+    assert(store.withSecret(
         handle,
         (scope const(ubyte)[]) @safe
         {
@@ -136,8 +137,8 @@ void main()
     assert(!store.isLocked);
 
     // Reopen through a new store object.
-    EncryptedVaultCredentialStore reopened;
-    assert(EncryptedVaultCredentialStore.openExisting(
+    EncryptedCredentialVault reopened;
+    assert(EncryptedCredentialVault.openExisting(
         vaultPath,
         ns,
         reopened
@@ -145,7 +146,7 @@ void main()
     assert(reopened.isLocked);
     assert(reopened.unlock(passphrase) == CredentialStatus.ok);
 
-    assert(reopened.acquire(
+    assert(reopened.withSecret(
         handle,
         (scope const(ubyte)[] bytes) @safe
         {
@@ -155,12 +156,12 @@ void main()
 
     auto replacement =
         SecretBuffer(cast(const(ubyte)[]) "replacement");
-    assert(reopened.replace(
+    assert(reopened.update(
         handle,
         replacement
     ) == CredentialStatus.ok);
 
-    assert(reopened.acquire(
+    assert(reopened.withSecret(
         handle,
         (scope const(ubyte)[] bytes) @safe
         {
@@ -179,7 +180,7 @@ void main()
 
     VaultWrappingKeySource sourceA =
         (scope const ubyte[protectorSaltBytes] salt,
-         scope SecretVisitor visitor) @safe
+         scope SecretCallback visitor) @safe
         {
             assert(salt.length == protectorSaltBytes);
             visitor(wrappingKeyA[]);
@@ -188,17 +189,17 @@ void main()
 
     VaultWrappingKeySource sourceB =
         (scope const ubyte[protectorSaltBytes] salt,
-         scope SecretVisitor visitor) @safe
+         scope SecretCallback visitor) @safe
         {
             assert(salt.length == protectorSaltBytes);
             visitor(wrappingKeyB[]);
             return CredentialStatus.ok;
         };
 
-    VaultUnlockEnvelope envelopeA;
-    VaultUnlockEnvelope envelopeB;
+    VaultUnlockMethod envelopeA;
+    VaultUnlockMethod envelopeB;
 
-    assert(createVaultUnlockEnvelopeForStore(
+    assert(createVaultUnlockMethodForStore(
         reopened,
         "test-protector",
         cast(const(ubyte)[]) "binding-a",
@@ -206,7 +207,7 @@ void main()
         envelopeA
     ) == CredentialStatus.ok);
 
-    assert(createVaultUnlockEnvelopeForStore(
+    assert(createVaultUnlockMethodForStore(
         reopened,
         "test-protector",
         cast(const(ubyte)[]) "binding-b",
@@ -215,8 +216,8 @@ void main()
     ) == CredentialStatus.ok);
 
     const serializedA = envelopeA.serialize();
-    VaultUnlockEnvelope parsedA;
-    assert(VaultUnlockEnvelope.tryParse(
+    VaultUnlockMethod parsedA;
+    assert(VaultUnlockMethod.tryParse(
         serializedA,
         parsedA
     ));
@@ -231,7 +232,7 @@ void main()
     ) == CredentialStatus.ok);
     assert(!reopened.isLocked);
 
-    assert(reopened.acquire(
+    assert(reopened.withSecret(
         handle,
         (scope const(ubyte)[] bytes) @safe
         {
@@ -252,7 +253,7 @@ void main()
 
     VaultWrappingKeySource wrongSource =
         (scope const ubyte[protectorSaltBytes],
-         scope SecretVisitor visitor) @safe
+         scope SecretCallback visitor) @safe
         {
             ubyte[32] wrongKey;
             wrongKey[] = 0x33;
@@ -271,8 +272,8 @@ void main()
     auto tamperedEnvelopeBytes = serializedA.dup;
     tamperedEnvelopeBytes[$ - 1] ^= 0x01;
 
-    VaultUnlockEnvelope tamperedEnvelope;
-    assert(VaultUnlockEnvelope.tryParse(
+    VaultUnlockMethod tamperedEnvelope;
+    assert(VaultUnlockMethod.tryParse(
         tamperedEnvelopeBytes,
         tamperedEnvelope
     ));
@@ -290,8 +291,8 @@ void main()
         CredentialStatus.ok);
 
     // Wrong namespace is rejected without password work.
-    EncryptedVaultCredentialStore wrongNamespace;
-    assert(EncryptedVaultCredentialStore.openExisting(
+    EncryptedCredentialVault wrongNamespace;
+    assert(EncryptedCredentialVault.openExisting(
         vaultPath,
         otherNs,
         wrongNamespace
@@ -300,15 +301,15 @@ void main()
 
     // A vault handle is bound to the specific non-secret vault id.
     const secondPath = buildPath(root, "second.vault");
-    EncryptedVaultCredentialStore second;
-    assert(EncryptedVaultCredentialStore.createNew(
+    EncryptedCredentialVault second;
+    assert(EncryptedCredentialVault.createNew(
         secondPath,
         ns,
         passphrase,
         second
     ) == CredentialStatus.ok);
 
-    assert(second.acquire(
+    assert(second.withSecret(
         handle,
         (scope const(ubyte)[]) @safe {}
     ) == CredentialStatus.invalidInput);
@@ -319,7 +320,7 @@ void main()
     makeOwnerOnly(vaultPath);
 
     bool calledAfterSwap;
-    assert(reopened.acquire(
+    assert(reopened.withSecret(
         handle,
         (scope const(ubyte)[]) @safe
         {
@@ -338,8 +339,8 @@ void main()
         cast(uint)(S_IRUSR | S_IWUSR | 0x20 | 0x04)
     ) == 0);
 
-    EncryptedVaultCredentialStore insecureMode;
-    assert(EncryptedVaultCredentialStore.openExisting(
+    EncryptedCredentialVault insecureMode;
+    assert(EncryptedCredentialVault.openExisting(
         secondPath,
         ns,
         insecureMode
@@ -358,8 +359,8 @@ void main()
         toStringz(linkedVault)
     ) == 0);
 
-    EncryptedVaultCredentialStore linked;
-    assert(EncryptedVaultCredentialStore.openExisting(
+    EncryptedCredentialVault linked;
+    assert(EncryptedCredentialVault.openExisting(
         linkedVault,
         ns,
         linked
@@ -374,8 +375,8 @@ void main()
         toStringz(blockedLock)
     ) == 0);
 
-    EncryptedVaultCredentialStore blocked;
-    assert(EncryptedVaultCredentialStore.createNew(
+    EncryptedCredentialVault blocked;
+    assert(EncryptedCredentialVault.createNew(
         blockedPath,
         ns,
         passphrase,
@@ -389,8 +390,8 @@ void main()
     oversizedPath.write(oversized);
     makeOwnerOnly(oversizedPath);
 
-    EncryptedVaultCredentialStore oversizedStore;
-    assert(EncryptedVaultCredentialStore.openExisting(
+    EncryptedCredentialVault oversizedStore;
+    assert(EncryptedCredentialVault.openExisting(
         oversizedPath,
         ns,
         oversizedStore
@@ -402,8 +403,8 @@ void main()
     // lost-update race despite each instance being internally synchronized.
     const concurrentPath = buildPath(root, "concurrent.vault");
 
-    EncryptedVaultCredentialStore concurrentSeed;
-    assert(EncryptedVaultCredentialStore.createNew(
+    EncryptedCredentialVault concurrentSeed;
+    assert(EncryptedCredentialVault.createNew(
         concurrentPath,
         ns,
         passphrase,
@@ -411,14 +412,14 @@ void main()
     ) == CredentialStatus.ok);
     concurrentSeed.lock();
 
-    EncryptedVaultCredentialStore writerA;
-    EncryptedVaultCredentialStore writerB;
-    assert(EncryptedVaultCredentialStore.openExisting(
+    EncryptedCredentialVault writerA;
+    EncryptedCredentialVault writerB;
+    assert(EncryptedCredentialVault.openExisting(
         concurrentPath,
         ns,
         writerA
     ) == CredentialStatus.ok);
-    assert(EncryptedVaultCredentialStore.openExisting(
+    assert(EncryptedCredentialVault.openExisting(
         concurrentPath,
         ns,
         writerB
@@ -435,14 +436,14 @@ void main()
         auto threadSecret =
             SecretBuffer(cast(const(ubyte)[]) "concurrent-a");
         concurrentStatusA =
-            writerA.store(threadSecret, concurrentHandleA);
+            writerA.save(threadSecret, concurrentHandleA);
     });
 
     auto threadB = new Thread({
         auto threadSecret =
             SecretBuffer(cast(const(ubyte)[]) "concurrent-b");
         concurrentStatusB =
-            writerB.store(threadSecret, concurrentHandleB);
+            writerB.save(threadSecret, concurrentHandleB);
     });
 
     threadA.start();
@@ -458,15 +459,15 @@ void main()
     writerA.lock();
     writerB.lock();
 
-    EncryptedVaultCredentialStore concurrentCheck;
-    assert(EncryptedVaultCredentialStore.openExisting(
+    EncryptedCredentialVault concurrentCheck;
+    assert(EncryptedCredentialVault.openExisting(
         concurrentPath,
         ns,
         concurrentCheck
     ) == CredentialStatus.ok);
     assert(concurrentCheck.unlock(passphrase) == CredentialStatus.ok);
 
-    assert(concurrentCheck.acquire(
+    assert(concurrentCheck.withSecret(
         concurrentHandleA,
         (scope const(ubyte)[] bytes) @safe
         {
@@ -474,7 +475,7 @@ void main()
         }
     ) == CredentialStatus.ok);
 
-    assert(concurrentCheck.acquire(
+    assert(concurrentCheck.withSecret(
         concurrentHandleB,
         (scope const(ubyte)[] bytes) @safe
         {
@@ -491,15 +492,15 @@ void main()
     copy(concurrentPath, residuePath);
     makeOwnerOnly(residuePath);
 
-    EncryptedVaultCredentialStore residueCheck;
-    assert(EncryptedVaultCredentialStore.openExisting(
+    EncryptedCredentialVault residueCheck;
+    assert(EncryptedCredentialVault.openExisting(
         concurrentPath,
         ns,
         residueCheck
     ) == CredentialStatus.ok);
     assert(residueCheck.unlock(passphrase) == CredentialStatus.ok);
 
-    assert(residueCheck.acquire(
+    assert(residueCheck.withSecret(
         concurrentHandleA,
         (scope const(ubyte)[] bytes) @safe
         {
@@ -511,8 +512,8 @@ void main()
     residueCheck.lock();
 
     // Logical delete survives reopen.
-    EncryptedVaultCredentialStore finalStore;
-    assert(EncryptedVaultCredentialStore.openExisting(
+    EncryptedCredentialVault finalStore;
+    assert(EncryptedCredentialVault.openExisting(
         secondPath,
         ns,
         finalStore
@@ -522,7 +523,7 @@ void main()
     auto finalSecret =
         SecretBuffer(cast(const(ubyte)[]) "delete-me");
     CredentialHandle finalHandle;
-    assert(finalStore.store(
+    assert(finalStore.save(
         finalSecret,
         finalHandle
     ) == CredentialStatus.ok);
@@ -531,7 +532,7 @@ void main()
         CredentialStatus.ok);
 
     bool calledAfterDelete;
-    assert(finalStore.acquire(
+    assert(finalStore.withSecret(
         finalHandle,
         (scope const(ubyte)[]) @safe
         {

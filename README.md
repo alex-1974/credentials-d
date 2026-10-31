@@ -87,11 +87,11 @@ auto store = new MemoryCredentialStore(ns);
 auto secret = SecretBuffer(cast(const(ubyte)[]) "token");
 
 CredentialHandle handle;
-assert(store.store(secret, handle) == CredentialStatus.ok);
+assert(store.save(secret, handle) == CredentialStatus.ok);
 
-assert(store.acquire(handle, (scope const(ubyte)[] bytes) @safe
+assert(store.withSecret(handle, (scope const(ubyte)[] bytes) @safe
 {
-    // Use plaintext only inside this explicit acquisition callback.
+    // Use plaintext only inside this explicit callback.
 }) == CredentialStatus.ok);
 
 assert(store.remove(handle) == CredentialStatus.ok);
@@ -210,7 +210,7 @@ not silently fall back when Windows Credential Manager is unavailable.
 See [ADR 0004](docs/adr/0004-windows-credential-manager.md).
 
 
-## FIDO2 vault unlock
+## Security-key vault unlock
 
 Hardware-assisted vault unlock is available through the optional:
 
@@ -218,83 +218,83 @@ Hardware-assisted vault unlock is available through the optional:
 credentials-d:fido2-vault
 ```
 
-FIDO2 is deliberately **not** another credential store. A FIDO2 authenticator
-never receives OAuth tokens, API keys or vault records. Instead, a dedicated
-FIDO2 credential uses the CTAP `hmac-secret` extension to derive a
-credential-scoped 32-byte wrapping key. That key authenticates and unwraps the
-same random vault key already used by the encrypted vault.
+The public API deliberately speaks in security-key terms. Consumers do not need
+to understand FIDO2/CTAP commands, hmac-secret extensions, credential
+protection flags, COSE algorithms, or authenticator device-path semantics.
 
-The encrypted-vault format remains unchanged. Additional unlock methods are
-stored as independent non-secret `VaultUnlockEnvelope` values, so one vault
-may retain:
-
-```text
-random vault key
-├── existing passphrase / Argon2id recovery wrapper
-├── FIDO2 security key A envelope
-└── FIDO2 backup key B envelope
-```
-
-Two interaction policies are explicit:
-
-- `touchOnly` (wire-compatible alias of `userPresence`): normal vault
-  unlock is authenticator presence plus physical touch, with no PIN/UV request;
-  older authenticators may still require a PIN once during MakeCredential;
-- `userVerificationRequired`: UV required and enrollment requests
-  `credProtect=UV_REQUIRED`; UV may be satisfied by a PIN-authorized flow or
-  by built-in authenticator verification such as fingerprint. Unsupported
-  authenticators fail rather than silently downgrading.
-
-Authenticator device paths are runtime selectors and are never persisted as
-security identity. RP id, opaque credential id and verification policy form the
-persisted non-secret FIDO2 binding.
-
-Consumers may query standard authenticator capabilities without creating a
-credential or requesting user interaction:
+Connected keys can be discovered and inspected without user interaction:
 
 ```d
-Fido2Capabilities capabilities;
-auto status = queryFido2Capabilities(devicePath, capabilities);
+import credentials.security_key :
+    SecurityKeyCapabilities,
+    SecurityKeyInfo,
+    findSecurityKeys,
+    getSecurityKeyCapabilities;
+
+SecurityKeyInfo[] keys;
+assert(findSecurityKeys(keys) == CredentialStatus.ok);
+
+SecurityKeyCapabilities capabilities;
+assert(getSecurityKeyCapabilities(
+    keys[0].id,
+    capabilities
+) == CredentialStatus.ok);
 ```
 
-The result reports hmac-secret and hmac-secret-mc, credProtect, client-PIN and
-built-in UV availability/configuration, UV modality, discoverable-credential
-support/capacity, and advertised COSE algorithms (ES256, EdDSA, ES384 and
-RS256). Capability discovery is advisory; actual enrollment and unlock calls
-continue to fail closed if a requested policy cannot be satisfied.
+The consumer-relevant capabilities describe whether the key can unlock a vault,
+whether setup can be completed in a single key interaction, and whether PIN or
+built-in user verification is available. Protocol extensions and signing
+algorithms remain internal diagnostics.
 
-For built-in UV, consumers can use the explicit PIN-free helpers
-`addFido2UserVerificationVaultUnlock()` and
-`unlockVaultWithFido2UserVerification()`. These require the persisted
-`userVerificationRequired` policy; they do not weaken to touch-only if the
-authenticator cannot perform UV.
+A vault unlock method is added with one of two clear interaction policies:
 
-When capability discovery reports `hmac-secret-mc` and the locally linked
-libfido2 exposes the required 1.17-era client ABI, envelope enrollment uses
-the CTAP 2.2 MakeCredential extension to derive the initial wrapping key in the
-same authenticator interaction that creates the credential. The envelope salt
-is generated before MakeCredential and is reused unchanged by the vault
-envelope. Devices without `hmac-secret-mc`, or systems whose libfido2 lacks the
-optional client symbols, transparently retain the existing MakeCredential +
-GetAssertion flow. The persisted binding and envelope formats
-are identical in both cases.
+```d
+import credentials.security_key :
+    SecurityKeyAccess,
+    addSecurityKeyUnlock,
+    unlockWithSecurityKey;
+import credentials.vault :
+    EncryptedCredentialVault,
+    VaultUnlockMethod;
 
-FIDO2 operations use official libfido2 through a narrow private FFI and are
-synchronous; applications must execute enrollment/unlock away from a GUI/render
-thread. PIN overloads accept `SecretBuffer`, create only one temporary
-NUL-terminated native buffer, and overwrite it before release. A PIN-protected
-CTAP2.0 authenticator may require this overload for MakeCredential even when
-the persisted binding remains `userPresence`; later hmac-secret derivation
-still occurs without PIN/UV.
+VaultUnlockMethod unlockMethod;
 
-CI qualifies the ABI, parsing, envelope cryptography and no-hardware discovery
-path. The physical-authenticator contract was qualified on 2026-10-31 with a
-YubiKey 5.2.4 for hmac-secret, touch-only/user-presence, UV/PIN, wrong
-credential, tamper rejection and passphrase recovery. DMD 2.111.0 was exercised
-physically; LDC was exercised physically with the locally available 1.42.0,
-while CI covers the supported LDC 1.41.0 baseline. A second independent physical
-authenticator was not available, so the optional two-key/removal scenarios
-remain unexercised.
+auto status = addSecurityKeyUnlock(
+    vault,
+    keys[0].id,
+    SecurityKeyAccess.touch,
+    unlockMethod
+);
+
+// Later, after reopening the locked vault:
+status = unlockWithSecurityKey(
+    vault,
+    keys[0].id,
+    unlockMethod
+);
+```
+
+`SecurityKeyAccess.touch` means that normal unlock requires physical
+presence/touch. `SecurityKeyAccess.verifiedUser` means that the key must verify
+the user; the key may satisfy that requirement through built-in verification
+such as fingerprint, or through a PIN-backed flow. A PIN overload is available
+when setup or verified-user access requires one.
+
+The vault's `CredentialNamespace` is used internally as the security-key
+application scope. Consumers do not supply protocol-specific relying-party
+identifiers.
+
+Internally, the backend uses FIDO2 hmac-secret to derive a credential-scoped
+wrapping key. CTAP 2.2 hmac-secret-mc is used automatically as a single-step
+setup fast path when both the authenticator and local libfido2 support it.
+Older authenticators transparently retain the qualified two-step setup path.
+These implementation choices do not change the public unlock-method format.
+
+The physical security-key contract was qualified on 2026-10-31 with a YubiKey
+5.2.4 for touch-only operation, PIN-backed user verification, wrong credential,
+tamper rejection and passphrase recovery. Built-in biometric verification and
+the CTAP 2.2 single-step fast path are implemented but require suitable hardware
+for positive physical qualification.
 
 See [ADR 0008](docs/adr/0008-fido2-vault-key-protection.md).
 

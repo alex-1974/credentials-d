@@ -30,7 +30,7 @@ private void expectUnavailable()
     auto secret = SecretBuffer(cast(const(ubyte)[]) "unavailable-test");
 
     CredentialHandle handle;
-    assert(store.store(secret, handle) == CredentialStatus.unavailable);
+    assert(store.save(secret, handle) == CredentialStatus.unavailable);
     assert(!handle.valid);
 }
 
@@ -43,8 +43,8 @@ private void runIntegration()
     const capabilities = store.capabilities;
     assert(capabilities.persistent);
     assert(capabilities.protection ==
-        StoreProtection.nativeUserCredentialStore);
-    assert(capabilities.unlockModel == StoreUnlockModel.osManaged);
+        StoreProtection.operatingSystem);
+    assert(capabilities.unlockModel == StoreUnlockModel.operatingSystem);
     assert(capabilities.mobility == StoreMobility.mayRoam);
     assert(capabilities.blocking == StoreBlocking.mayPrompt);
     assert(capabilities.concurrency == StoreConcurrency.serialized);
@@ -58,7 +58,7 @@ private void runIntegration()
     auto first = SecretBuffer(firstBytes);
 
     CredentialHandle handle;
-    assert(store.store(first, handle) == CredentialStatus.ok);
+    assert(store.save(first, handle) == CredentialStatus.ok);
     assert(handle.valid);
 
     scope(exit)
@@ -68,7 +68,7 @@ private void runIntegration()
     }
 
     bool acquired;
-    assert(store.acquire(handle, (scope const(ubyte)[] bytes) @safe
+    assert(store.withSecret(handle, (scope const(ubyte)[] bytes) @safe
     {
         assert(bytes == firstBytes);
         acquired = true;
@@ -80,7 +80,7 @@ private void runIntegration()
     auto reopened = new LinuxSecretServiceStore(ns);
     scope(exit) reopened.close();
 
-    assert(reopened.acquire(handle, (scope const(ubyte)[] bytes) @safe
+    assert(reopened.withSecret(handle, (scope const(ubyte)[] bytes) @safe
     {
         assert(bytes == firstBytes);
     }) == CredentialStatus.ok);
@@ -92,10 +92,10 @@ private void runIntegration()
     ];
     auto replacement = SecretBuffer(replacementBytes);
 
-    assert(reopened.replace(handle, replacement) ==
+    assert(reopened.update(handle, replacement) ==
         CredentialStatus.ok);
 
-    assert(store.acquire(handle, (scope const(ubyte)[] bytes) @safe
+    assert(store.withSecret(handle, (scope const(ubyte)[] bytes) @safe
     {
         assert(bytes == replacementBytes);
     }) == CredentialStatus.ok);
@@ -106,7 +106,7 @@ private void runIntegration()
     scope(exit) otherStore.close();
 
     bool wrongNamespaceCalled;
-    assert(otherStore.acquire(
+    assert(otherStore.withSecret(
         handle,
         (scope const(ubyte)[]) @safe
         {
@@ -120,7 +120,7 @@ private void runIntegration()
     handle = CredentialHandle.init;
 
     bool calledAfterDelete;
-    assert(reopened.acquire(
+    assert(reopened.withSecret(
         deletedHandle,
         (scope const(ubyte)[]) @safe
         {

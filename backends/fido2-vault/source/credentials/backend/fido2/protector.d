@@ -18,7 +18,7 @@ import credentials.backend.fido2.binding :
     validRpId;
 import credentials.backend.fido2.ffi;
 import credentials.backend.vault.protector :
-    VaultUnlockEnvelope,
+    VaultUnlockMethod,
     VaultWrappingKeySource,
     protectorSaltBytes;
 import credentials.namespace : CredentialNamespace;
@@ -26,17 +26,17 @@ import credentials.random : secureRandomBytes;
 import credentials.secret : SecretBuffer;
 import credentials.store :
     CredentialStatus,
-    SecretVisitor;
+    SecretCallback;
 import std.string : fromStringz, toStringz;
 
 version (linux)
 {
     import credentials.backend.vault.posix_protector :
-        createVaultUnlockEnvelopeForStore,
-        createVaultUnlockEnvelopeForStoreWithSalt,
+        createVaultUnlockMethodForStore,
+        createVaultUnlockMethodForStoreWithSalt,
         unlockVaultWithEnvelope;
     import credentials.backend.vault.posix_store :
-        EncryptedVaultCredentialStore;
+        EncryptedCredentialVault;
 }
 
 enum int defaultFido2TimeoutMilliseconds = 30_000;
@@ -368,7 +368,7 @@ CredentialStatus withFido2WrappingKey(
     string devicePath,
     scope const Fido2VaultBinding binding,
     scope const ubyte[protectorSaltBytes] salt,
-    scope SecretVisitor visitor
+    scope SecretCallback visitor
 ) @safe
 {
     return deriveImpl(
@@ -390,7 +390,7 @@ CredentialStatus withFido2WrappingKeyUserVerification(
     string devicePath,
     scope const Fido2VaultBinding binding,
     scope const ubyte[protectorSaltBytes] salt,
-    scope SecretVisitor visitor
+    scope SecretCallback visitor
 ) @safe
 {
     if (binding.verificationPolicy !=
@@ -413,7 +413,7 @@ CredentialStatus withFido2WrappingKeyWithPin(
     scope const Fido2VaultBinding binding,
     scope const ubyte[protectorSaltBytes] salt,
     scope ref const SecretBuffer pin,
-    scope SecretVisitor visitor
+    scope SecretCallback visitor
 ) @safe
 {
     if (binding.verificationPolicy !=
@@ -448,14 +448,14 @@ version (linux)
      * The existing passphrase wrapper remains valid as a recovery path.
      */
     CredentialStatus addFido2VaultUnlock(
-        EncryptedVaultCredentialStore store,
+        EncryptedCredentialVault store,
         string devicePath,
         string rpId,
         Fido2VerificationPolicy policy,
-        out VaultUnlockEnvelope envelope
+        out VaultUnlockMethod envelope
     ) @safe
     {
-        envelope = VaultUnlockEnvelope.init;
+        envelope = VaultUnlockMethod.init;
 
         if (!validPolicy(policy))
             return CredentialStatus.invalidInput;
@@ -484,7 +484,7 @@ version (linux)
 
         VaultWrappingKeySource source =
             (scope const ubyte[protectorSaltBytes] salt,
-             scope SecretVisitor visitor) @safe
+             scope SecretCallback visitor) @safe
             {
                 return withFido2WrappingKey(
                     devicePath,
@@ -494,7 +494,7 @@ version (linux)
                 );
             };
 
-        return createVaultUnlockEnvelopeForStore(
+        return createVaultUnlockMethodForStore(
             store,
             fido2ProtectorKind,
             encodedBinding,
@@ -511,10 +511,10 @@ version (linux)
      * modality; credentials-d does not encode the modality in the binding.
      */
     CredentialStatus addFido2UserVerificationVaultUnlock(
-        EncryptedVaultCredentialStore store,
+        EncryptedCredentialVault store,
         string devicePath,
         string rpId,
-        out VaultUnlockEnvelope envelope
+        out VaultUnlockMethod envelope
     ) @safe
     {
         return addFido2VaultUnlock(
@@ -539,11 +539,11 @@ version (linux)
      * user-presence-only hmac-secret assertion.
      */
     CredentialStatus addFido2TouchVaultUnlockWithEnrollmentPin(
-        EncryptedVaultCredentialStore store,
+        EncryptedCredentialVault store,
         string devicePath,
         string rpId,
         scope ref const SecretBuffer enrollmentPin,
-        out VaultUnlockEnvelope envelope
+        out VaultUnlockMethod envelope
     ) @safe
     {
         return addFido2VaultUnlockWithPin(
@@ -565,11 +565,11 @@ version (linux)
      * an otherwise userPresence binding.
      */
     CredentialStatus addFido2VaultUnlockWithPin(
-        EncryptedVaultCredentialStore store,
+        EncryptedCredentialVault store,
         string devicePath,
         string rpId,
         scope ref const SecretBuffer pin,
-        out VaultUnlockEnvelope envelope
+        out VaultUnlockMethod envelope
     ) @safe
     {
         return addFido2VaultUnlockWithPin(
@@ -584,15 +584,15 @@ version (linux)
 
     /// Ditto.
     CredentialStatus addFido2VaultUnlockWithPin(
-        EncryptedVaultCredentialStore store,
+        EncryptedCredentialVault store,
         string devicePath,
         string rpId,
         Fido2VerificationPolicy policy,
         scope ref const SecretBuffer pin,
-        out VaultUnlockEnvelope envelope
+        out VaultUnlockMethod envelope
     ) @safe
     {
-        envelope = VaultUnlockEnvelope.init;
+        envelope = VaultUnlockMethod.init;
 
         if (!validPolicy(policy))
             return CredentialStatus.invalidInput;
@@ -637,7 +637,7 @@ version (linux)
             case Fido2VerificationPolicy.userPresence:
                 source =
                     (scope const ubyte[protectorSaltBytes] salt,
-                     scope SecretVisitor visitor) @safe
+                     scope SecretCallback visitor) @safe
                     {
                         return withFido2WrappingKey(
                             devicePath,
@@ -651,7 +651,7 @@ version (linux)
             case Fido2VerificationPolicy.userVerificationRequired:
                 source =
                     (scope const ubyte[protectorSaltBytes] salt,
-                     scope SecretVisitor visitor) @safe
+                     scope SecretCallback visitor) @safe
                     {
                         return withFido2WrappingKeyWithPin(
                             devicePath,
@@ -664,7 +664,7 @@ version (linux)
                 break;
         }
 
-        return createVaultUnlockEnvelopeForStore(
+        return createVaultUnlockMethodForStore(
             store,
             fido2ProtectorKind,
             encodedBinding,
@@ -677,9 +677,9 @@ version (linux)
      * Unlock a POSIX vault through one FIDO2 envelope.
      */
     CredentialStatus unlockVaultWithFido2(
-        EncryptedVaultCredentialStore store,
+        EncryptedCredentialVault store,
         string devicePath,
-        scope const VaultUnlockEnvelope envelope
+        scope const VaultUnlockMethod envelope
     ) @safe
     {
         Fido2VaultBinding binding;
@@ -689,7 +689,7 @@ version (linux)
 
         VaultWrappingKeySource source =
             (scope const ubyte[protectorSaltBytes] salt,
-             scope SecretVisitor visitor) @safe
+             scope SecretCallback visitor) @safe
             {
                 return withFido2WrappingKey(
                     devicePath,
@@ -714,9 +714,9 @@ version (linux)
      * authenticator and a physical touch during normal unlock.
      */
     CredentialStatus unlockVaultWithFido2Touch(
-        EncryptedVaultCredentialStore store,
+        EncryptedCredentialVault store,
         string devicePath,
-        scope const VaultUnlockEnvelope envelope
+        scope const VaultUnlockMethod envelope
     ) @safe
     {
         Fido2VaultBinding binding;
@@ -742,9 +742,9 @@ version (linux)
      * entry point for authenticators with built-in UV such as fingerprint.
      */
     CredentialStatus unlockVaultWithFido2UserVerification(
-        EncryptedVaultCredentialStore store,
+        EncryptedCredentialVault store,
         string devicePath,
-        scope const VaultUnlockEnvelope envelope
+        scope const VaultUnlockMethod envelope
     ) @safe
     {
         Fido2VaultBinding binding;
@@ -767,9 +767,9 @@ version (linux)
      * UV/PIN variant of unlockVaultWithFido2.
      */
     CredentialStatus unlockVaultWithFido2WithPin(
-        EncryptedVaultCredentialStore store,
+        EncryptedCredentialVault store,
         string devicePath,
-        scope const VaultUnlockEnvelope envelope,
+        scope const VaultUnlockMethod envelope,
         scope ref const SecretBuffer pin
     ) @safe
     {
@@ -784,7 +784,7 @@ version (linux)
 
         VaultWrappingKeySource source =
             (scope const ubyte[protectorSaltBytes] salt,
-             scope SecretVisitor visitor) @safe
+             scope SecretCallback visitor) @safe
             {
                 return withFido2WrappingKeyWithPin(
                     devicePath,
@@ -822,15 +822,15 @@ version (linux)
     }
 
     private CredentialStatus addFido2VaultUnlockMakeCredentialImpl(
-        EncryptedVaultCredentialStore store,
+        EncryptedCredentialVault store,
         string devicePath,
         string rpId,
         Fido2VerificationPolicy policy,
         const(char)* pin,
-        out VaultUnlockEnvelope envelope
+        out VaultUnlockMethod envelope
     ) @trusted
     {
-        envelope = VaultUnlockEnvelope.init;
+        envelope = VaultUnlockMethod.init;
 
         if (store is null ||
             !validDevicePath(devicePath) ||
@@ -883,7 +883,7 @@ version (linux)
 
         VaultWrappingKeySource source =
             (scope const ubyte[protectorSaltBytes] requestedSalt,
-             scope SecretVisitor visitor) @safe
+             scope SecretCallback visitor) @safe
             {
                 if (visitor is null ||
                     requestedSalt[] != salt[])
@@ -893,7 +893,7 @@ version (linux)
                 return CredentialStatus.ok;
             };
 
-        return createVaultUnlockEnvelopeForStoreWithSalt(
+        return createVaultUnlockMethodForStoreWithSalt(
             store,
             fido2ProtectorKind,
             encodedBinding,
@@ -905,7 +905,7 @@ version (linux)
 }
 
 private CredentialStatus bindingFromEnvelope(
-    scope const VaultUnlockEnvelope envelope,
+    scope const VaultUnlockMethod envelope,
     out Fido2VaultBinding binding
 ) @safe
 {
@@ -934,7 +934,7 @@ private CredentialStatus enrollImpl(
     Fido2VerificationPolicy policy,
     const(char)* pin,
     scope const(ubyte)[] makeCredentialSalt,
-    scope SecretVisitor makeCredentialVisitor,
+    scope SecretCallback makeCredentialVisitor,
     out Fido2VaultBinding binding
 ) @trusted
 {
@@ -1118,7 +1118,7 @@ private CredentialStatus deriveImpl(
     scope const Fido2VaultBinding binding,
     scope const ubyte[protectorSaltBytes] salt,
     const(char)* pin,
-    scope SecretVisitor visitor
+    scope SecretCallback visitor
 ) @trusted
 {
     if (!validDevicePath(devicePath) ||

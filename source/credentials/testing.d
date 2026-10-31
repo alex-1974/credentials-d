@@ -10,7 +10,7 @@ import credentials.secret : SecretBuffer;
 import credentials.store :
     CredentialStatus,
     CredentialStore,
-    SecretVisitor,
+    SecretCallback,
     StoreCapabilities;
 
 /**
@@ -24,9 +24,9 @@ final class MockCredentialStore : CredentialStore
 {
     private MemoryCredentialStore inner_;
 
-    CredentialStatus forcedStoreStatus = CredentialStatus.ok;
-    CredentialStatus forcedAcquireStatus = CredentialStatus.ok;
-    CredentialStatus forcedReplaceStatus = CredentialStatus.ok;
+    CredentialStatus forcedSaveStatus = CredentialStatus.ok;
+    CredentialStatus forcedWithSecretStatus = CredentialStatus.ok;
+    CredentialStatus forcedUpdateStatus = CredentialStatus.ok;
     CredentialStatus forcedRemoveStatus = CredentialStatus.ok;
 
     this(CredentialNamespace credentialNamespace) @safe
@@ -47,40 +47,40 @@ final class MockCredentialStore : CredentialStore
         return inner_.capabilities;
     }
 
-    override CredentialStatus store(
+    override CredentialStatus save(
         scope ref const SecretBuffer secret,
         out CredentialHandle handle
     ) @safe
     {
-        if (forcedStoreStatus != CredentialStatus.ok)
+        if (forcedSaveStatus != CredentialStatus.ok)
         {
             handle = CredentialHandle.init;
-            return forcedStoreStatus;
+            return forcedSaveStatus;
         }
 
-        return inner_.store(secret, handle);
+        return inner_.save(secret, handle);
     }
 
-    override CredentialStatus acquire(
+    override CredentialStatus withSecret(
         CredentialHandle handle,
-        scope SecretVisitor visitor
+        scope SecretCallback callback
     ) @safe
     {
-        if (forcedAcquireStatus != CredentialStatus.ok)
-            return forcedAcquireStatus;
+        if (forcedWithSecretStatus != CredentialStatus.ok)
+            return forcedWithSecretStatus;
 
-        return inner_.acquire(handle, visitor);
+        return inner_.withSecret(handle, callback);
     }
 
-    override CredentialStatus replace(
+    override CredentialStatus update(
         CredentialHandle handle,
         scope ref const SecretBuffer replacement
     ) @safe
     {
-        if (forcedReplaceStatus != CredentialStatus.ok)
-            return forcedReplaceStatus;
+        if (forcedUpdateStatus != CredentialStatus.ok)
+            return forcedUpdateStatus;
 
-        return inner_.replace(handle, replacement);
+        return inner_.update(handle, replacement);
     }
 
     override CredentialStatus remove(CredentialHandle handle) @safe
@@ -112,12 +112,12 @@ unittest
     auto secret = SecretBuffer(cast(const(ubyte)[]) "alpha");
 
     CredentialHandle handle;
-    assert(store.store(secret, handle) == CredentialStatus.ok);
+    assert(store.save(secret, handle) == CredentialStatus.ok);
 
-    store.forcedAcquireStatus = CredentialStatus.locked;
+    store.forcedWithSecretStatus = CredentialStatus.locked;
 
     bool called;
-    const status = store.acquire(handle, (scope const(ubyte)[]) @safe
+    const status = store.withSecret(handle, (scope const(ubyte)[]) @safe
     {
         called = true;
     });

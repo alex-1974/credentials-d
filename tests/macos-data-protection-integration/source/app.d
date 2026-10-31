@@ -32,8 +32,8 @@ void main()
     const capabilities = store.capabilities;
     assert(capabilities.persistent);
     assert(capabilities.protection ==
-        StoreProtection.nativeUserCredentialStore);
-    assert(capabilities.unlockModel == StoreUnlockModel.osManaged);
+        StoreProtection.operatingSystem);
+    assert(capabilities.unlockModel == StoreUnlockModel.operatingSystem);
     assert(capabilities.mobility == StoreMobility.localDevice);
     assert(capabilities.blocking == StoreBlocking.mayBlock);
     assert(capabilities.concurrency == StoreConcurrency.serialized);
@@ -46,7 +46,7 @@ void main()
     auto first = SecretBuffer(firstBytes);
 
     CredentialHandle handle;
-    const stored = store.store(first, handle);
+    const stored = store.save(first, handle);
     writeln("macOS DPK initial store status code: ", cast(int) stored);
 
     // A generic command-line executable is not a production-qualified DPK
@@ -99,7 +99,7 @@ void main()
     }
 
     bool acquired;
-    assert(store.acquire(handle, (scope const(ubyte)[] bytes) @safe
+    assert(store.withSecret(handle, (scope const(ubyte)[] bytes) @safe
     {
         assert(bytes == firstBytes);
         acquired = true;
@@ -107,7 +107,7 @@ void main()
     assert(acquired);
 
     auto reopened = new MacOSDataProtectionCredentialStore(ns);
-    assert(reopened.acquire(handle, (scope const(ubyte)[] bytes) @safe
+    assert(reopened.withSecret(handle, (scope const(ubyte)[] bytes) @safe
     {
         assert(bytes == firstBytes);
     }) == CredentialStatus.ok);
@@ -119,10 +119,10 @@ void main()
     ];
     auto replacement = SecretBuffer(replacementBytes);
 
-    assert(reopened.replace(handle, replacement) ==
+    assert(reopened.update(handle, replacement) ==
         CredentialStatus.ok);
 
-    assert(store.acquire(handle, (scope const(ubyte)[] bytes) @safe
+    assert(store.withSecret(handle, (scope const(ubyte)[] bytes) @safe
     {
         assert(bytes == replacementBytes);
     }) == CredentialStatus.ok);
@@ -132,7 +132,7 @@ void main()
         new MacOSDataProtectionCredentialStore(otherNs);
 
     bool wrongNamespaceCalled;
-    assert(otherStore.acquire(
+    assert(otherStore.withSecret(
         handle,
         (scope const(ubyte)[]) @safe
         {
@@ -146,7 +146,7 @@ void main()
     handle = CredentialHandle.init;
 
     bool calledAfterDelete;
-    assert(reopened.acquire(
+    assert(reopened.withSecret(
         deletedHandle,
         (scope const(ubyte)[]) @safe
         {
