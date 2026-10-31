@@ -52,6 +52,12 @@ automatically. This avoids relying on unstable `/dev/hidrawN` numbering.
 `--device-a /dev/hidrawN` remains available when several devices are
 attached.
 
+The qualification runner reports the envelope enrollment path. On a device
+with `hmac-secret-mc` it prints
+`Envelope_A_enrollment_path=hmac-secret-mc` and expects one combined
+MakeCredential/key-derivation interaction. On older devices it prints
+`makecredential-plus-getassertion` and retains the two explicit interactions.
+
 The operator is prompted before every individual operation that can require
 user presence. For each prompt, release the sensor, wait until the authenticator
 starts blinking, then touch once. This avoids visually conflating consecutive
