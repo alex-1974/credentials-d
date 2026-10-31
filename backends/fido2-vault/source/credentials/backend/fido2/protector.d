@@ -52,6 +52,161 @@ struct Fido2DeviceInfo
 }
 
 /**
+ * Non-secret capabilities reported by CTAP authenticatorGetInfo.
+ *
+ * Capability discovery is advisory: consumers should use it to choose UX or
+ * optional fast paths, while security-sensitive operations still fail closed
+ * if the authenticator cannot satisfy the requested policy.
+ *
+ * remainingDiscoverableCredentials is -1 when the authenticator does not
+ * advertise the CTAP 2.1 estimate. uvModality is the raw FIDO Registry bitmask
+ * and is zero when not advertised.
+ */
+struct Fido2Capabilities
+{
+    bool hmacSecret;
+    bool hmacSecretMakeCredential;
+    bool credProtect;
+
+    bool clientPin;
+    bool clientPinConfigured;
+
+    bool builtInUserVerification;
+    bool builtInUserVerificationConfigured;
+    ulong uvModality;
+
+    bool discoverableCredentials;
+    long remainingDiscoverableCredentials = -1;
+
+    bool es256;
+    bool edDsa;
+    bool es384;
+    bool rs256;
+
+    ulong firmwareVersion;
+}
+
+/**
+ * Query one currently connected authenticator's standard FIDO2 capabilities.
+ *
+ * No PIN, touch, credential creation or secret derivation is performed.
+ * devicePath is a runtime selector and is not persisted.
+ */
+CredentialStatus queryFido2Capabilities(
+    string devicePath,
+    out Fido2Capabilities capabilities
+) @trusted
+{
+    capabilities = Fido2Capabilities.init;
+
+    if (!validDevicePath(devicePath))
+        return CredentialStatus.invalidInput;
+
+    fido_init(FIDO_DISABLE_U2F_FALLBACK);
+
+    auto dev = fido_dev_new();
+    if (dev is null)
+        return CredentialStatus.backendFailure;
+
+    scope(exit)
+    {
+        fido_dev_close(dev);
+        fido_dev_free(&dev);
+    }
+
+    int rc = fido_dev_open(
+        dev,
+        cast(const(char)*)toStringz(devicePath)
+    );
+    if (rc != FIDO_OK)
+        return mapFidoStatus(rc);
+
+    rc = fido_dev_set_timeout(
+        dev,
+        defaultFido2TimeoutMilliseconds
+    );
+    if (rc != FIDO_OK)
+        return mapFidoStatus(rc);
+
+    auto info = fido_cbor_info_new();
+    if (info is null)
+        return CredentialStatus.backendFailure;
+
+    scope(exit) fido_cbor_info_free(&info);
+
+    rc = fido_dev_get_cbor_info(dev, info);
+    if (rc != FIDO_OK)
+        return mapFidoStatus(rc);
+
+    capabilities.hmacSecret =
+        hasCborString(
+            fido_cbor_info_extensions_ptr(info),
+            fido_cbor_info_extensions_len(info),
+            "hmac-secret"
+        );
+    capabilities.hmacSecretMakeCredential =
+        hasCborString(
+            fido_cbor_info_extensions_ptr(info),
+            fido_cbor_info_extensions_len(info),
+            "hmac-secret-mc"
+        );
+    capabilities.credProtect =
+        hasCborString(
+            fido_cbor_info_extensions_ptr(info),
+            fido_cbor_info_extensions_len(info),
+            "credProtect"
+        );
+
+    bool optionValue;
+    capabilities.clientPin =
+        findCborOption(info, "clientPin", optionValue);
+    capabilities.clientPinConfigured =
+        capabilities.clientPin && optionValue;
+
+    optionValue = false;
+    capabilities.builtInUserVerification =
+        findCborOption(info, "uv", optionValue);
+    capabilities.builtInUserVerificationConfigured =
+        capabilities.builtInUserVerification && optionValue;
+
+    optionValue = false;
+    capabilities.discoverableCredentials =
+        findCborOption(info, "rk", optionValue) && optionValue;
+
+    const algorithmCount =
+        fido_cbor_info_algorithm_count(info);
+    foreach (i; 0 .. algorithmCount)
+    {
+        final switch (fido_cbor_info_algorithm_cose(info, i))
+        {
+            case COSE_ES256:
+                capabilities.es256 = true;
+                break;
+            case COSE_EDDSA:
+                capabilities.edDsa = true;
+                break;
+            case COSE_ES384:
+                capabilities.es384 = true;
+                break;
+            case COSE_RS256:
+                capabilities.rs256 = true;
+                break;
+            default:
+                break;
+        }
+    }
+
+    capabilities.firmwareVersion =
+        fido_cbor_info_fwversion(info);
+    capabilities.uvModality =
+        fido_cbor_info_uv_modality(info);
+    capabilities.remainingDiscoverableCredentials =
+        fido_cbor_info_rk_remaining(info);
+
+    return CredentialStatus.ok;
+}
+
+/**
  * Discover currently available libfido2 devices.
  *
  * An empty list with status ok means no discoverable device is currently
@@ -794,6 +949,58 @@ private CredentialStatus deriveImpl(
 
     visitor(secret[0 .. secretLength]);
     return CredentialStatus.ok;
+}
+
+private bool hasCborString(
+    const(char*)* values,
+    size_t count,
+    string expected
+) @trusted
+{
+    if (values is null)
+        return false;
+
+    foreach (i; 0 .. count)
+    {
+        const value = values[i];
+        if (value !is null &&
+            fromStringz(value) == expected)
+            return true;
+    }
+
+    return false;
+}
+
+private bool findCborOption(
+    const fido_cbor_info_t* info,
+    string expected,
+    out bool value
+) @trusted
+{
+    value = false;
+
+    if (info is null)
+        return false;
+
+    const names = fido_cbor_info_options_name_ptr(info);
+    const values = fido_cbor_info_options_value_ptr(info);
+    const count = fido_cbor_info_options_len(info);
+
+    if (names is null || values is null)
+        return false;
+
+    foreach (i; 0 .. count)
+    {
+        const name = names[i];
+        if (name !is null &&
+            fromStringz(name) == expected)
+        {
+            value = values[i];
+            return true;
+        }
+    }
+
+    return false;
 }
 
 private bool validDevicePath(string path)
