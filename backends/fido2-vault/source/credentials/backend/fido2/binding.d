@@ -27,7 +27,11 @@ enum Fido2VerificationPolicy : ubyte
     touchOnly = userPresence,
 
     /**
-     * PIN/UV-backed use. Both user presence and user verification are required.
+     * User verification is required in addition to user presence.
+     *
+     * UV may be satisfied by built-in authenticator verification (for example
+     * fingerprint) or by a PIN-authorized CTAP flow. The persisted policy does
+     * not encode which UV modality was used.
      */
     userVerificationRequired = 2
 }
