@@ -710,21 +710,27 @@ private VaultUnlockMethod withReplacementBinding(
 )
 {
     const originalBytes = original.serialize();
-    const oldBinding = original.protectorBinding;
     const newBinding = replacement.serialize();
 
+    enum size_t bindingLengthOffset = 8 + 2 + 2;
     enforce(
-        oldBinding.length <= originalBytes.length,
-        "protector binding longer than serialized envelope"
+        originalBytes.length >= bindingLengthOffset + 4,
+        "serialized unlock method too short"
+    );
+
+    const oldBindingLength =
+        cast(uint)originalBytes[bindingLengthOffset + 0] |
+        (cast(uint)originalBytes[bindingLengthOffset + 1] << 8) |
+        (cast(uint)originalBytes[bindingLengthOffset + 2] << 16) |
+        (cast(uint)originalBytes[bindingLengthOffset + 3] << 24);
+
+    enforce(
+        oldBindingLength <= originalBytes.length,
+        "protector binding longer than serialized unlock method"
     );
 
     const bindingOffset =
-        originalBytes.length - oldBinding.length;
-
-    enforce(
-        originalBytes[bindingOffset .. $] == oldBinding[],
-        "serialized envelope binding is not the final field"
-    );
+        originalBytes.length - cast(size_t)oldBindingLength;
 
     enforce(
         newBinding.length <= uint.max,
@@ -736,7 +742,6 @@ private VaultUnlockMethod withReplacementBinding(
     rewritten[0 .. bindingOffset] =
         originalBytes[0 .. bindingOffset];
 
-    enum size_t bindingLengthOffset = 8 + 2 + 2;
     const length = cast(uint)newBinding.length;
 
     rewritten[bindingLengthOffset + 0] =
