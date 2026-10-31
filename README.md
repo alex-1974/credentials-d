@@ -241,8 +241,9 @@ Two interaction policies are explicit:
   unlock is authenticator presence plus physical touch, with no PIN/UV request;
   older authenticators may still require a PIN once during MakeCredential;
 - `userVerificationRequired`: UV required and enrollment requests
-  `credProtect=UV_REQUIRED`; unsupported authenticators fail rather than
-  silently downgrading.
+  `credProtect=UV_REQUIRED`; UV may be satisfied by a PIN-authorized flow or
+  by built-in authenticator verification such as fingerprint. Unsupported
+  authenticators fail rather than silently downgrading.
 
 Authenticator device paths are runtime selectors and are never persisted as
 security identity. RP id, opaque credential id and verification policy form the
@@ -261,6 +262,12 @@ built-in UV availability/configuration, UV modality, discoverable-credential
 support/capacity, and advertised COSE algorithms (ES256, EdDSA, ES384 and
 RS256). Capability discovery is advisory; actual enrollment and unlock calls
 continue to fail closed if a requested policy cannot be satisfied.
+
+For built-in UV, consumers can use the explicit PIN-free helpers
+`addFido2UserVerificationVaultUnlock()` and
+`unlockVaultWithFido2UserVerification()`. These require the persisted
+`userVerificationRequired` policy; they do not weaken to touch-only if the
+authenticator cannot perform UV.
 
 FIDO2 operations use official libfido2 through a narrow private FFI and are
 synchronous; applications must execute enrollment/unlock away from a GUI/render

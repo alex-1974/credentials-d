@@ -114,7 +114,27 @@ permission to downgrade to touch-only.
 attempt. Do not repeatedly run the wrong-PIN portion on a device with very low
 remaining retry count.
 
-## 4. Two-key / loss-of-key qualification
+## 4. Built-in UV qualification
+
+Use this mode only with an authenticator that reports built-in UV as supported
+and configured, for example a biometric authenticator:
+
+```bash
+DC=dmd ./run.sh \
+  --uv-built-in \
+  --device-a /dev/hidrawN
+```
+
+This mode supplies no PIN to libfido2. Enrollment and assertion still request
+UV and `credProtect=UV_REQUIRED`; the authenticator must satisfy UV internally.
+If built-in UV is absent or not configured, the runner returns
+`result=UNSUPPORTED` rather than falling back to PIN or touch-only.
+
+The run proves the same hmac-secret, envelope, tamper and recovery properties
+as the normal qualification path while exercising the explicit PIN-free
+`userVerificationRequired` API.
+
+## 5. Two-key / loss-of-key qualification
 
 Attach two independent authenticators and discover both paths first.
 
@@ -135,10 +155,11 @@ The fixture:
 6. re-discovers devices and verifies A is absent;
 7. unlocks with B and reads the original synthetic credential.
 
-The same mode can be combined with `--uv` if both authenticators support the
-UV policy.
+The same mode can be combined with `--uv` for PIN-based UV, or with
+`--uv-built-in` when both authenticators support and have configured built-in
+UV.
 
-## 5. Repeat with LDC
+## 6. Repeat with LDC
 
 Repeat the relevant production run with:
 
