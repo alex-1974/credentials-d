@@ -11,12 +11,13 @@ profile management are deliberately outside this package.
 
 ## Status
 
-Pre-0.1 API qualification.
+Pre-0.1 API freeze candidate.
 
 The semantic core, native desktop credential-store backends and optional
-encrypted-vault backend are implemented and security-gated. The API remains
-subject to 0.x refinement; the macOS Data Protection Keychain still requires a
-signed app-like production qualification.
+encrypted-vault backend are implemented and security-gated. The intended
+consumer surface is now documented in
+[API stability](docs/API_STABILITY.md). The macOS Data Protection Keychain
+still requires a signed app-like production qualification.
 
 ## Intended scope
 
@@ -61,7 +62,8 @@ FFI: Argon2id for the passphrase wrapper and XChaCha20-Poly1305-IETF for
 authenticated encryption. Optional FIDO2 support is a vault-key protector,
 never a CredentialStore and never a place to store application credentials.
 
-See [ADR 0001](docs/adr/0001-security-scope.md) for the initial scope,
+See [API stability](docs/API_STABILITY.md) for the public consumer contract,
+[ADR 0001](docs/adr/0001-security-scope.md) for the initial scope,
 [Threat Model and Security Contract](docs/security/THREAT_MODEL.md) for the
 normative security boundary, [Native platform credential-store
 qualification](docs/security/PLATFORM_STORES.md) for the OS backend comparison,
