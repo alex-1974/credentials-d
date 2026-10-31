@@ -1,5 +1,25 @@
 /**
- * Public package root for credentials-d.
+ * Core consumer API for credentials-d.
+ *
+ * Start here for CredentialNamespace, CredentialHandle, SecretBuffer and the
+ * common CredentialStore operations.
+ *
+ * Examples:
+ * ---
+ * auto ns = CredentialNamespace("org.example.application");
+ * auto store = new MemoryCredentialStore(ns);
+ *
+ * auto secret = SecretBuffer(cast(const(ubyte)[]) "token");
+ *
+ * CredentialHandle handle;
+ * if (store.save(secret, handle) == CredentialStatus.ok)
+ * {
+ *     store.withSecret(handle, (scope const(ubyte)[] bytes) @safe
+ *     {
+ *         // Use the credential here.
+ *     });
+ * }
+ * ---
  */
 module credentials;
 
