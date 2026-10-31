@@ -150,7 +150,7 @@ final class WindowsCredentialStore : CredentialStore
     {
         synchronized (this)
         {
-            return acquireImpl(handle, visitor);
+            return acquireImpl(handle, callback);
         }
     }
 
@@ -355,7 +355,7 @@ final class WindowsCredentialStore : CredentialStore
      * Narrow trusted WinCred write boundary.
      *
      * The caller owns `target` for this call and `bytes` is scoped to the
-     * explicit SecretBuffer visitor. WinCred consumes both synchronously.
+     * explicit SecretBuffer callback. WinCred consumes both synchronously.
      */
     private static CredentialStatus writeNative(
         const(wchar)* target,
