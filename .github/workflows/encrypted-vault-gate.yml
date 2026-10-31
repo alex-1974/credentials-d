@@ -104,11 +104,10 @@ jobs:
         shell: bash
         run: |
           rm -rf backends/encrypted-vault/docs
-          dub build \
-            --root=backends/encrypted-vault \
-            --build=ddox \
-            --compiler="$DC" \
-            --force
+          (
+            cd backends/encrypted-vault
+            dub build --build=ddox --compiler="$DC" --force
+          )
 
       - name: Encrypted-vault release build
         shell: bash
