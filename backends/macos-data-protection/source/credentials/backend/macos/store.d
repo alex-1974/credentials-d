@@ -58,7 +58,7 @@ final class MacOSDataProtectionCredentialStore : CredentialStore
             true,
             StoreProtection.operatingSystem,
             StoreUnlockModel.operatingSystem,
-                        StoreMobility.localDevice,
+            StoreMobility.localDevice,
             true,
             StoreBlocking.mayBlock,
             StoreConcurrency.serialized
