@@ -4,6 +4,11 @@ All notable changes to this project will be documented here.
 
 ## Unreleased
 
+- Improve pre-0.1 consumer ergonomics with direct `CredentialNamespace(...)`
+  construction, clearer operation-status names, slimmer store capabilities and
+  public `credentials.linux`, `credentials.windows` and
+  `credentials.macos` facades.
+
 - Redesign the pre-0.1 public API around consumer terminology: `save()`,
   `withSecret()`, `update()`, `EncryptedCredentialVault`,
   `VaultUnlockMethod`, and the `credentials.security_key` facade.
