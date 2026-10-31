@@ -1,8 +1,5 @@
 /**
- * External vault-key protector envelopes.
- *
- * A protector envelope is non-secret metadata plus an authenticated wrapping
- * of the random vault key. It may be persisted independently of the vault.
+ * Persistable unlock methods for encrypted vaults.
  */
 module credentials.backend.vault.protector;
 
@@ -46,10 +43,25 @@ private enum size_t fixedEnvelopeBytes =
     wrappedVaultKeyBytes;
 
 /**
- * Persistable non-secret unlock descriptor.
+ * Persistable information needed to unlock a vault with an additional method,
+ * such as a security key.
  *
- * The envelope binds one external protector to one vault id, namespace and
- * opaque protector binding. Tampering is detected by the vault-key AEAD.
+ * Store serialize() in ordinary application settings. Restore it later with
+ * tryParse() and pass it to the matching unlock function.
+ *
+ * Examples:
+ * ---
+ * settings.securityKeyUnlock = unlockMethod.serialize();
+ *
+ * VaultUnlockMethod restored;
+ * if (VaultUnlockMethod.tryParse(
+ *     settings.securityKeyUnlock,
+ *     restored
+ * ))
+ * {
+ *     // Pass restored to unlockWithSecurityKey().
+ * }
+ * ---
  */
 struct VaultUnlockMethod
 {
@@ -73,7 +85,7 @@ struct VaultUnlockMethod
     }
 
     /**
-     * Whether this value contains a complete unlock method.
+     * Whether this value can be passed to a vault unlock function.
      */
     @property bool valid() const scope @nogc nothrow @safe
     {
@@ -82,14 +94,10 @@ struct VaultUnlockMethod
     }
 
     /**
-     * Serialize this non-secret unlock method for ordinary persistence.
+     * Return the opaque value to persist in application settings.
      *
      * Returns:
-     *     Opaque bytes that may be stored in application settings/files.
-     *
-     * Note:
-     *     The bytes are not secret, but they are integrity-sensitive: altering
-     *     them causes a later unlock attempt to fail.
+     *     Non-secret bytes representing this unlock method.
      */
     ubyte[] serialize() const @safe
     in (valid)
@@ -118,14 +126,14 @@ struct VaultUnlockMethod
     }
 
     /**
-     * Parse a previously serialized unlock method without throwing.
+     * Restore an unlock method previously returned by serialize().
      *
      * Params:
-     *     input = Opaque bytes previously returned by serialize().
-     *     envelope = Receives the parsed unlock method on success.
+     *     input = Value read from application settings.
+     *     envelope = Receives the restored unlock method.
      *
      * Returns:
-     *     true when input is a valid canonical unlock method; false otherwise.
+     *     true when input is a valid unlock method; false otherwise.
      */
     static bool tryParse(
         scope const(ubyte)[] input,
