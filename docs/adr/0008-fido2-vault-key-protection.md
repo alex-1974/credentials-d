@@ -261,6 +261,36 @@ initial userPresence enrollment is an explicit signal that the caller may
 retry MakeCredential through the PIN overload while retaining the
 userPresence policy.
 
+## CTAP 2.2 hmac-secret-mc fast path
+
+When `queryFido2Capabilities()` reports both `hmac-secret` and
+`hmac-secret-mc`, FIDO2 envelope enrollment uses the CTAP 2.2
+MakeCredential secret derivation path.
+
+The sequence is:
+
+1. generate the random 32-byte envelope protector salt;
+2. request both `hmac-secret=true` and `hmac-secret-mc` with that salt in
+   MakeCredential;
+3. verify that the MakeCredential UV flag matches the persisted policy;
+4. require exactly one 32-byte returned secret;
+5. use that secret only to wrap the current vault key;
+6. zero the temporary wrapping-key buffer;
+7. persist the ordinary v1 envelope with the same salt and ordinary
+   `Fido2VaultBinding`.
+
+CTAP requires the ordinary `hmac-secret` extension to accompany
+`hmac-secret-mc`; this also preserves later GetAssertion-based unlock with
+the same credential.
+
+Capability discovery controls only whether the fast path is attempted. If the
+device does not advertise `hmac-secret-mc`, credentials-d uses the existing
+MakeCredential followed by GetAssertion flow. If a device advertises the
+extension but the attempted MakeCredential operation fails, the error is
+returned rather than silently performing a second user interaction.
+
+No vault-envelope or FIDO2-binding format version changes.
+
 ## External vault unlock envelope
 
 FIDO2 does not modify encrypted-vault format version 1.
