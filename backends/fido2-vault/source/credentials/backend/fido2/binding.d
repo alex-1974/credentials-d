@@ -12,7 +12,23 @@ enum size_t maximumRpIdBytes = 253;
  */
 enum Fido2VerificationPolicy : ubyte
 {
+    /**
+     * Touch-only use after enrollment. No PIN or UV is requested for
+     * hmac-secret assertions.
+     */
     userPresence = 1,
+
+    /**
+     * Consumer-facing synonym for userPresence.
+     *
+     * This is an exact wire-compatible alias; serialized bindings continue to
+     * use value 1 and remain compatible with existing userPresence bindings.
+     */
+    touchOnly = userPresence,
+
+    /**
+     * PIN/UV-backed use. Both user presence and user verification are required.
+     */
     userVerificationRequired = 2
 }
 
@@ -337,4 +353,31 @@ unittest
     assert(!validRpId("credentials-d..local"));
     assert(!validRpId("credentials-d.local-"));
     assert(!validRpId("credentials_d.local"));
+}
+
+
+@("FIDO2 touchOnly is wire-compatible with userPresence")
+unittest
+{
+    static assert(
+        Fido2VerificationPolicy.touchOnly ==
+        Fido2VerificationPolicy.userPresence
+    );
+
+    ubyte[] credential = [0x54, 0x4f, 0x55, 0x43, 0x48];
+
+    auto original = Fido2VaultBinding.trusted(
+        "credentials-d.local",
+        credential,
+        Fido2VerificationPolicy.touchOnly
+    );
+
+    const encoded = original.serialize();
+
+    Fido2VaultBinding parsed;
+    assert(Fido2VaultBinding.tryParse(encoded, parsed));
+    assert(
+        parsed.verificationPolicy ==
+        Fido2VerificationPolicy.touchOnly
+    );
 }

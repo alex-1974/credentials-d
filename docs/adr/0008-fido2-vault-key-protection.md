@@ -143,6 +143,35 @@ application profile, account name, email address, or other user identity.
 This keeps the hmac-secret derivation consistently in the non-UV branch while
 remaining compatible with older CTAP2 authenticators.
 
+For consumers that want to state this policy explicitly,
+`Fido2VerificationPolicy.touchOnly` is a wire-compatible alias of
+`userPresence`. Existing serialized bindings remain unchanged.
+
+A convenience pair makes the lifecycle explicit:
+
+```d
+VaultUnlockEnvelope envelope;
+
+auto status = addFido2TouchVaultUnlockWithEnrollmentPin(
+    store,
+    devicePath,
+    rpId,
+    enrollmentPin,
+    envelope
+);
+
+// Later, during normal use:
+status = unlockVaultWithFido2Touch(
+    store,
+    devicePath,
+    envelope
+);
+```
+
+The first function exists for authenticators that require PIN authorization
+during credential creation. The second deliberately has no PIN parameter:
+normal unlock is authenticator presence plus physical touch only.
+
 ### userVerificationRequired
 
 - enrollment requests UV;

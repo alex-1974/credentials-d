@@ -20,8 +20,10 @@ public import credentials.backend.fido2.protector :
 version (linux)
 {
     public import credentials.backend.fido2.protector :
+        addFido2TouchVaultUnlockWithEnrollmentPin,
         addFido2VaultUnlock,
         addFido2VaultUnlockWithPin,
         unlockVaultWithFido2,
+        unlockVaultWithFido2Touch,
         unlockVaultWithFido2WithPin;
 }
