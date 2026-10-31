@@ -18,10 +18,10 @@ void main()
     auto secret = SecretBuffer(cast(const(ubyte)[]) "consumer-token");
 
     CredentialHandle handle;
-    assert(store.store(secret, handle) == CredentialStatus.ok);
+    assert(store.save(secret, handle) == CredentialStatus.ok);
 
     bool acquired;
-    assert(store.acquire(handle, (scope const(ubyte)[] bytes) @safe
+    assert(store.withSecret(handle, (scope const(ubyte)[] bytes) @safe
     {
         assert(bytes == cast(const(ubyte)[]) "consumer-token");
         acquired = true;
