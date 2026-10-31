@@ -60,16 +60,21 @@ struct VaultUnlockMethod
     private ubyte[xNonceBytes] nonce_;
     private ubyte[wrappedVaultKeyBytes] wrappedKey_;
 
-    @property string protectorKind() const scope @safe
+    package(credentials.backend) @property
+    string protectorKind() const scope @safe
     {
         return kind_.idup;
     }
 
-    @property ubyte[] protectorBinding() const scope @safe
+    package(credentials.backend) @property
+    ubyte[] protectorBinding() const scope @safe
     {
         return binding_.dup;
     }
 
+    /**
+     * Whether this value contains a complete unlock method.
+     */
     @property bool valid() const scope @nogc nothrow @safe
     {
         return validKind(kind_) &&
@@ -77,7 +82,14 @@ struct VaultUnlockMethod
     }
 
     /**
-     * Serialize the non-secret envelope for persistence.
+     * Serialize this non-secret unlock method for ordinary persistence.
+     *
+     * Returns:
+     *     Opaque bytes that may be stored in application settings/files.
+     *
+     * Note:
+     *     The bytes are not secret, but they are integrity-sensitive: altering
+     *     them causes a later unlock attempt to fail.
      */
     ubyte[] serialize() const @safe
     in (valid)
@@ -106,7 +118,14 @@ struct VaultUnlockMethod
     }
 
     /**
-     * Parse one bounded canonical envelope.
+     * Parse a previously serialized unlock method without throwing.
+     *
+     * Params:
+     *     input = Opaque bytes previously returned by serialize().
+     *     envelope = Receives the parsed unlock method on success.
+     *
+     * Returns:
+     *     true when input is a valid canonical unlock method; false otherwise.
      */
     static bool tryParse(
         scope const(ubyte)[] input,
