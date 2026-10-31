@@ -54,7 +54,7 @@ import credentials.store :
  * best-effort lock, but D GC finalization timing is not a prompt-destruction
  * guarantee.
  */
-final class EncryptedVaultCredentialStore : CredentialStore
+final class EncryptedCredentialVault : CredentialStore
 {
     private string path_;
     private CredentialNamespace namespace_;
@@ -77,7 +77,7 @@ final class EncryptedVaultCredentialStore : CredentialStore
         string path,
         CredentialNamespace ns,
         scope ref const SecretBuffer passphrase,
-        out EncryptedVaultCredentialStore result
+        out EncryptedCredentialVault result
     ) @safe
     {
         result = null;
@@ -102,7 +102,7 @@ final class EncryptedVaultCredentialStore : CredentialStore
             return mapCreateFile(fileStatus);
 
         auto candidate =
-            new EncryptedVaultCredentialStore(path, ns);
+            new EncryptedCredentialVault(path, ns);
 
         coreStatus = unlockVaultSession(
             image,
@@ -126,7 +126,7 @@ final class EncryptedVaultCredentialStore : CredentialStore
     static CredentialStatus openExisting(
         string path,
         CredentialNamespace ns,
-        out EncryptedVaultCredentialStore result
+        out EncryptedCredentialVault result
     ) @safe
     {
         result = null;
@@ -150,7 +150,7 @@ final class EncryptedVaultCredentialStore : CredentialStore
         if (coreStatus != VaultCoreStatus.ok)
             return mapCore(coreStatus);
 
-        result = new EncryptedVaultCredentialStore(path, ns);
+        result = new EncryptedCredentialVault(path, ns);
         return CredentialStatus.ok;
     }
 
