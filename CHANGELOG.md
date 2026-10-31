@@ -4,6 +4,11 @@ All notable changes to this project will be documented here.
 
 ## Unreleased
 
+- Publish consumer-facing Ddoc/DDOX documentation through GitHub Pages, with
+  separate API sections for core, Linux, Windows, macOS, encrypted vault and
+  security-key support.
+- Point the DUB package homepage to the published documentation site.
+
 ## v0.1.0 — 2026-10-31
 
 First public release.

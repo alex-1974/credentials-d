@@ -1,0 +1,196 @@
+name: Documentation Pages
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - develop
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  linux-docs:
+    name: Docs / Linux and portable APIs
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Install native dependencies
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libsecret-1-dev libsodium-dev libfido2-dev
+
+      - name: Install D compiler
+        uses: dlang-community/setup-dlang@v2
+        with:
+          compiler: dmd-2.111.0
+
+      - name: Build core documentation
+        shell: bash
+        run: |
+          rm -rf docs
+          dub build --build=ddox --compiler="$DC" --force
+          mkdir -p _pages/api/core
+          cp -a docs/. _pages/api/core/
+
+      - name: Build Linux documentation
+        shell: bash
+        run: |
+          rm -rf backends/linux-secret-service/docs
+          (cd backends/linux-secret-service && dub build --build=ddox --compiler="$DC" --force)
+          mkdir -p _pages/api/linux
+          cp -a backends/linux-secret-service/docs/. _pages/api/linux/
+
+      - name: Build vault documentation
+        shell: bash
+        run: |
+          rm -rf backends/encrypted-vault/docs
+          (cd backends/encrypted-vault && dub build --build=ddox --compiler="$DC" --force)
+          mkdir -p _pages/api/vault
+          cp -a backends/encrypted-vault/docs/. _pages/api/vault/
+
+      - name: Build security-key documentation
+        shell: bash
+        run: |
+          rm -rf backends/fido2-vault/docs
+          (cd backends/fido2-vault && dub build --build=ddox --compiler="$DC" --force)
+          mkdir -p _pages/api/security-key
+          cp -a backends/fido2-vault/docs/. _pages/api/security-key/
+
+      - name: Upload Linux documentation
+        uses: actions/upload-artifact@v4
+        with:
+          name: docs-linux
+          path: _pages
+          if-no-files-found: error
+
+  windows-docs:
+    name: Docs / Windows API
+    runs-on: windows-2025
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Install D compiler
+        uses: dlang-community/setup-dlang@v2
+        with:
+          compiler: dmd-2.111.0
+
+      - name: Build Windows documentation
+        shell: bash
+        run: |
+          rm -rf backends/windows/docs
+          (cd backends/windows && dub build --build=ddox --compiler="$DC" --force)
+          mkdir -p _pages/api/windows
+          cp -a backends/windows/docs/. _pages/api/windows/
+
+      - name: Upload Windows documentation
+        uses: actions/upload-artifact@v4
+        with:
+          name: docs-windows
+          path: _pages
+          if-no-files-found: error
+
+  macos-docs:
+    name: Docs / macOS API
+    runs-on: macos-15-intel
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Install D compiler
+        uses: dlang-community/setup-dlang@v2
+        with:
+          compiler: dmd-2.113.0
+
+      - name: Build macOS documentation
+        shell: bash
+        run: |
+          rm -rf backends/macos-data-protection/docs
+          (cd backends/macos-data-protection && dub build --build=ddox --compiler="$DC" --force)
+          mkdir -p _pages/api/macos
+          cp -a backends/macos-data-protection/docs/. _pages/api/macos/
+
+      - name: Upload macOS documentation
+        uses: actions/upload-artifact@v4
+        with:
+          name: docs-macos
+          path: _pages
+          if-no-files-found: error
+
+  assemble:
+    name: Assemble consumer documentation
+    runs-on: ubuntu-24.04
+    needs:
+      - linux-docs
+      - windows-docs
+      - macos-docs
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Download generated documentation
+        uses: actions/download-artifact@v4
+        with:
+          pattern: docs-*
+          path: _site
+          merge-multiple: true
+
+      - name: Add documentation landing page
+        shell: bash
+        run: |
+          cp pages/index.html _site/index.html
+          touch _site/.nojekyll
+
+          for page in             _site/api/core/index.html             _site/api/linux/index.html             _site/api/windows/index.html             _site/api/macos/index.html             _site/api/vault/index.html             _site/api/security-key/index.html
+          do
+            test -f "$page"
+          done
+
+      - name: Upload assembled documentation
+        uses: actions/upload-artifact@v4
+        with:
+          name: consumer-documentation
+          path: _site
+          if-no-files-found: error
+
+      - name: Upload GitHub Pages artifact
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: _site
+
+  deploy:
+    name: Deploy documentation
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04
+    needs: assemble
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
