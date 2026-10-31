@@ -122,8 +122,8 @@ final class WindowsCredentialStore : CredentialStore
     {
         return StoreCapabilities(
             true,
-            StoreProtection.nativeUserCredentialStore,
-            StoreUnlockModel.osManaged,
+            StoreProtection.operatingSystem,
+            StoreUnlockModel.operatingSystem,
             false,
             StoreMobility.localDevice,
             true,
@@ -145,7 +145,7 @@ final class WindowsCredentialStore : CredentialStore
 
     override CredentialStatus withSecret(
         CredentialHandle handle,
-        scope SecretCallback visitor
+        scope SecretCallback callback
     ) @safe
     {
         synchronized (this)
@@ -221,10 +221,10 @@ final class WindowsCredentialStore : CredentialStore
 
     private CredentialStatus acquireImpl(
         CredentialHandle handle,
-        scope SecretCallback visitor
+        scope SecretCallback callback
     ) @trusted
     {
-        if (!validHandle(handle) || visitor is null)
+        if (!validHandle(handle) || callback is null)
             return CredentialStatus.invalidInput;
 
         auto target = nativeTarget(handle.serialize());
@@ -258,7 +258,7 @@ final class WindowsCredentialStore : CredentialStore
             ];
         }
 
-        visitor(bytes);
+        callback(bytes);
         return CredentialStatus.ok;
     }
 
