@@ -1,9 +1,23 @@
 /**
- * Public encrypted credential vault API.
+ * Portable encrypted credential storage.
  *
- * Cryptographic image handling, wrapping-key derivation, protector envelopes
- * and filesystem mechanics are implementation details and are deliberately
- * not re-exported from this package.
+ * Use this module when your application deliberately wants to keep credentials
+ * in its own portable vault file instead of an operating-system credential
+ * store.
+ *
+ * Examples:
+ * ---
+ * auto ns = CredentialNamespace("org.example.application");
+ * auto passphrase = SecretBuffer(passphraseBytes);
+ *
+ * EncryptedCredentialVault vault;
+ * auto status = EncryptedCredentialVault.createNew(
+ *     "credentials.vault",
+ *     ns,
+ *     passphrase,
+ *     vault
+ * );
+ * ---
  */
 module credentials.vault;
 
