@@ -9,9 +9,11 @@ public import credentials.backend.fido2.binding :
     fido2ProtectorKind;
 
 public import credentials.backend.fido2.protector :
+    Fido2Capabilities,
     Fido2DeviceInfo,
     defaultFido2TimeoutMilliseconds,
     discoverFido2Devices,
+    queryFido2Capabilities,
     enrollFido2VaultBinding,
     enrollFido2VaultBindingWithPin,
     withFido2WrappingKey,

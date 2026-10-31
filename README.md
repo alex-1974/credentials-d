@@ -248,6 +248,20 @@ Authenticator device paths are runtime selectors and are never persisted as
 security identity. RP id, opaque credential id and verification policy form the
 persisted non-secret FIDO2 binding.
 
+Consumers may query standard authenticator capabilities without creating a
+credential or requesting user interaction:
+
+```d
+Fido2Capabilities capabilities;
+auto status = queryFido2Capabilities(devicePath, capabilities);
+```
+
+The result reports hmac-secret and hmac-secret-mc, credProtect, client-PIN and
+built-in UV availability/configuration, UV modality, discoverable-credential
+support/capacity, and advertised COSE algorithms (ES256, EdDSA, ES384 and
+RS256). Capability discovery is advisory; actual enrollment and unlock calls
+continue to fail closed if a requested policy cannot be satisfied.
+
 FIDO2 operations use official libfido2 through a narrow private FFI and are
 synchronous; applications must execute enrollment/unlock away from a GUI/render
 thread. PIN overloads accept `SecretBuffer`, create only one temporary

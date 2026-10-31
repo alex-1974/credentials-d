@@ -32,6 +32,12 @@ Discovery prints runtime device paths so an operator can select a device. The
 path is not persisted inside `Fido2VaultBinding`, `VaultUnlockEnvelope`, or
 the qualification PASS receipt fields.
 
+Discovery also prints standard CTAP capabilities for each authenticator:
+hmac-secret/hmac-secret-mc, credProtect, PIN/UV state, UV modality,
+discoverable-credential support/capacity, ES256/EdDSA/ES384/RS256 support and
+the raw firmware-version value. This GetInfo query does not require touch or
+PIN entry.
+
 ## 2. User-presence qualification
 
 Use a synthetic RP id dedicated to this qualification. The default is
