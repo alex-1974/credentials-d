@@ -9,8 +9,7 @@ import credentials :
 
 void main()
 {
-    CredentialNamespace ns;
-    assert(CredentialNamespace.tryParse("org.example.consumer", ns));
+    auto ns = CredentialNamespace("org.example.consumer");
 
     auto store = new MemoryCredentialStore(ns);
     scope(exit) store.clearAll();
