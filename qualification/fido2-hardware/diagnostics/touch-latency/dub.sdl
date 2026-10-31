@@ -1,0 +1,8 @@
+name "credentials-d-fido2-touch-diagnostic"
+description "Standalone libfido2 touch-latency diagnostic"
+license "MIT"
+
+targetType "executable"
+sourcePaths "source"
+
+libs "fido2"
