@@ -127,8 +127,8 @@ final class LinuxSecretServiceStore : CredentialStore
     {
         return StoreCapabilities(
             true,
-            StoreProtection.nativeUserCredentialStore,
-            StoreUnlockModel.osManaged,
+            StoreProtection.operatingSystem,
+            StoreUnlockModel.operatingSystem,
             false,
             // Secret Service does not promise that provider storage can never
             // roam/synchronize. Do not claim local-device-only protection.
@@ -152,7 +152,7 @@ final class LinuxSecretServiceStore : CredentialStore
 
     override CredentialStatus withSecret(
         CredentialHandle handle,
-        scope SecretCallback visitor
+        scope SecretCallback callback
     ) @safe
     {
         synchronized (this)
@@ -245,10 +245,10 @@ final class LinuxSecretServiceStore : CredentialStore
 
     private CredentialStatus acquireImpl(
         CredentialHandle handle,
-        scope SecretCallback visitor
+        scope SecretCallback callback
     ) @trusted
     {
-        if (visitor is null)
+        if (callback is null)
             return CredentialStatus.invalidInput;
 
         string locator;
@@ -309,7 +309,7 @@ final class LinuxSecretServiceStore : CredentialStore
         if (length != 0)
             bytes = cast(const(ubyte)[]) data[0 .. length];
 
-        visitor(bytes);
+        callback(bytes);
         return CredentialStatus.ok;
     }
 
