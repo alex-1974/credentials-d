@@ -43,8 +43,8 @@ private void runIntegration()
     const capabilities = store.capabilities;
     assert(capabilities.persistent);
     assert(capabilities.protection ==
-        StoreProtection.nativeUserCredentialStore);
-    assert(capabilities.unlockModel == StoreUnlockModel.osManaged);
+        StoreProtection.operatingSystem);
+    assert(capabilities.unlockModel == StoreUnlockModel.operatingSystem);
     assert(capabilities.mobility == StoreMobility.mayRoam);
     assert(capabilities.blocking == StoreBlocking.mayPrompt);
     assert(capabilities.concurrency == StoreConcurrency.serialized);
