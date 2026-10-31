@@ -227,8 +227,8 @@ final class EncryptedCredentialVault : CredentialStore
     {
         return StoreCapabilities(
             true,
-            StoreProtection.applicationEncryptedVault,
-            StoreUnlockModel.applicationManaged,
+            StoreProtection.encryptedVault,
+            StoreUnlockModel.application,
             false,
             StoreMobility.portableFile,
             true,
@@ -292,7 +292,7 @@ final class EncryptedCredentialVault : CredentialStore
 
     override CredentialStatus withSecret(
         CredentialHandle handle,
-        scope SecretCallback visitor
+        scope SecretCallback callback
     ) @safe
     {
         synchronized (this)
@@ -302,7 +302,7 @@ final class EncryptedCredentialVault : CredentialStore
 
             string locator;
             if (!locatorFromHandle(handle, locator) ||
-                visitor is null)
+                callback is null)
                 return CredentialStatus.invalidInput;
 
             VaultFileLock fileLock;
