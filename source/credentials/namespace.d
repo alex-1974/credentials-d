@@ -15,6 +15,22 @@ struct CredentialNamespace
     private string value_;
 
     /**
+     * Construct an application namespace from trusted configuration.
+     *
+     * Invalid namespace text is a programmer/configuration error and throws.
+     * Use tryParse() when reading namespace text from untrusted or persisted
+     * input.
+     */
+    this(string text) @safe
+    {
+        CredentialNamespace parsed;
+        if (!tryParse(text, parsed))
+            throw new Exception("invalid credential namespace");
+
+        value_ = parsed.value_;
+    }
+
+    /**
      * Whether this namespace contains a valid canonical value.
      */
     @property bool valid() const @nogc nothrow pure @safe
