@@ -225,7 +225,7 @@ protection flags, COSE algorithms, or authenticator device-path semantics.
 Connected keys can be discovered and inspected without user interaction:
 
 ```d
-import credentials.backend.fido2 :
+import credentials.security_key :
     SecurityKeyCapabilities,
     SecurityKeyInfo,
     findSecurityKeys,
@@ -249,11 +249,11 @@ algorithms remain internal diagnostics.
 A vault unlock method is added with one of two clear interaction policies:
 
 ```d
-import credentials.backend.fido2 :
+import credentials.security_key :
     SecurityKeyAccess,
     addSecurityKeyUnlock,
     unlockWithSecurityKey;
-import credentials.backend.vault :
+import credentials.vault :
     EncryptedCredentialVault,
     VaultUnlockMethod;
 
