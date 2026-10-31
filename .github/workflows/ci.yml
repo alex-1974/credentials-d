@@ -60,6 +60,10 @@ jobs:
         shell: bash
         run: dub run --root=tests/consumer --compiler="$DC" --force
 
+      - name: Basic consumer example
+        shell: bash
+        run: dub run --root=examples/basic-store --compiler="$DC" --force
+
       - name: External consumer smoke with DIP1000
         shell: bash
         run: DFLAGS="-preview=dip1000" dub run --root=tests/consumer --compiler="$DC" --force
