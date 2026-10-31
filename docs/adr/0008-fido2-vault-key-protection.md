@@ -264,7 +264,8 @@ userPresence policy.
 ## CTAP 2.2 hmac-secret-mc fast path
 
 When `queryFido2Capabilities()` reports both `hmac-secret` and
-`hmac-secret-mc`, FIDO2 envelope enrollment uses the CTAP 2.2
+`hmac-secret-mc`, and the local libfido2 client ABI exposes the required
+optional symbols, FIDO2 envelope enrollment uses the CTAP 2.2
 MakeCredential secret derivation path.
 
 The sequence is:
@@ -283,8 +284,13 @@ CTAP requires the ordinary `hmac-secret` extension to accompany
 `hmac-secret-mc`; this also preserves later GetAssertion-based unlock with
 the same credential.
 
-Capability discovery controls only whether the fast path is attempted. If the
-device does not advertise `hmac-secret-mc`, credentials-d uses the existing
+Capability discovery records both the authenticator-reported
+`hmacSecretMakeCredential` value and a derived
+`hmacSecretMakeCredentialUsable` value that also requires the optional
+libfido2 symbols. This keeps older distro libfido2 releases compatible.
+
+If the device does not advertise a usable `hmac-secret-mc` path,
+credentials-d uses the existing
 MakeCredential followed by GetAssertion flow. If a device advertises the
 extension but the attempted MakeCredential operation fails, the error is
 returned rather than silently performing a second user interaction.
