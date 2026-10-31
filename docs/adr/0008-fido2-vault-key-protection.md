@@ -203,7 +203,33 @@ normal unlock is authenticator presence plus physical touch only.
 - enrollment requests UV;
 - enrollment requests `credProtect=UV_REQUIRED`;
 - assertion requests both user presence and UV;
-- a PIN may be supplied through `SecretBuffer`.
+- UV may be satisfied by built-in authenticator verification or by a
+  PIN-authorized CTAP flow;
+- a PIN may be supplied through `SecretBuffer`, but it is not part of the
+  persisted policy.
+
+The PIN-free built-in-UV helpers are:
+
+```d
+auto status = addFido2UserVerificationVaultUnlock(
+    store,
+    devicePath,
+    rpId,
+    envelope
+);
+
+// Later:
+status = unlockVaultWithFido2UserVerification(
+    store,
+    devicePath,
+    envelope
+);
+```
+
+Both helpers require `userVerificationRequired`; the touch-only convenience
+API conversely rejects UV-required bindings. This keeps the public API aligned
+with the persisted security policy while leaving the concrete UV modality
+(fingerprint, another built-in modality, or PIN) to the authenticator.
 
 If the authenticator cannot satisfy the requested UV/credProtect policy,
 enrollment fails. The implementation does not silently downgrade to touch-only.
