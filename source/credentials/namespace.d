@@ -1,35 +1,39 @@
 /**
- * Application credential namespaces.
+ * Application namespaces used to keep credential sets separate.
  */
 module credentials.namespace;
 
 /**
- * Validated, non-secret namespace used to isolate one consumer's credentials.
+ * Stable name for one application's credential domain.
  *
- * Reverse-DNS names are recommended, for example
- * `org.example.application`. Names are canonical lowercase ASCII and are
- * safe to persist in ordinary configuration.
+ * Use a reverse-DNS-style value and keep it stable across application runs.
+ * Different namespaces intentionally cannot use each other's handles.
+ *
+ * Examples:
+ * ---
+ * auto ns = CredentialNamespace("org.example.application");
+ * auto store = new LinuxCredentialStore(ns);
+ * ---
  */
 struct CredentialNamespace
 {
     private string value_;
 
     /**
-     * Construct an application namespace from trusted configuration.
+     * Create the namespace used by application code.
      *
-     * Use tryParse() when reading namespace text from persisted or otherwise
-     * untrusted input.
+     * Use this constructor for a namespace literal or trusted configuration.
+     * Use tryParse() when the text came from persisted or external input.
      *
      * Params:
-     *     text = Canonical lowercase reverse-DNS-style namespace.
+     *     text = Stable lowercase reverse-DNS-style name.
      *
      * Throws:
-     *     Exception when text is not a valid credential namespace.
+     *     Exception when text is invalid.
      *
      * Examples:
      * ---
      * auto ns = CredentialNamespace("org.example.dunia");
-     * assert(ns.serialize() == "org.example.dunia");
      * ---
      */
     this(string text) @safe
@@ -42,7 +46,7 @@ struct CredentialNamespace
     }
 
     /**
-     * Whether this namespace contains a valid canonical value.
+     * Whether this value contains a usable namespace.
      */
     @property bool valid() const @nogc nothrow pure @safe
     {
@@ -50,7 +54,7 @@ struct CredentialNamespace
     }
 
     /**
-     * Return the canonical non-secret namespace text.
+     * Return the namespace text for persistence or display in diagnostics.
      */
     string serialize() const @nogc nothrow pure @safe
     {
@@ -58,18 +62,14 @@ struct CredentialNamespace
     }
 
     /**
-     * Parse a canonical credential namespace without throwing.
-     *
-     * Each dot-separated segment may contain lowercase ASCII letters, digits
-     * and interior hyphens. Empty segments and leading/trailing hyphens are
-     * rejected. The maximum length is deliberately bounded.
+     * Restore or validate a namespace without throwing.
      *
      * Params:
-     *     text = Candidate namespace text.
-     *     result = Receives the parsed namespace on success, otherwise init.
+     *     text = Namespace text read from settings or external input.
+     *     result = Receives the namespace on success.
      *
      * Returns:
-     *     true when text is valid and canonical; false otherwise.
+     *     true when text is valid; false otherwise.
      */
     static bool tryParse(string text, out CredentialNamespace result)
         @nogc nothrow pure @safe
