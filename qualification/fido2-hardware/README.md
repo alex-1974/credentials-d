@@ -55,6 +55,11 @@ That PIN is only for credential creation; the subsequent user-presence
 hmac-secret derivations remain PIN-less and must return an assertion without
 the UV flag.
 
+The public API exposes the same lifecycle explicitly through
+`addFido2TouchVaultUnlockWithEnrollmentPin()` for one-time setup and
+`unlockVaultWithFido2Touch()` for normal use. The latter accepts no PIN and
+therefore represents a strict authenticator-touch-only unlock path.
+
 YubiKeys with firmware before 5.3.0 also require a UserEntity name even though
 CTAP makes it optional in this privacy-preserving UP-only case. The library
 uses the constant non-personal value `credentials-d`; the random user id
