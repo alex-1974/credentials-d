@@ -12,11 +12,13 @@ import credentials :
     SecretBuffer,
     SecretVisitor;
 import credentials.backend.fido2 :
+    Fido2Capabilities,
     Fido2DeviceInfo,
     Fido2VaultBinding,
     Fido2VerificationPolicy,
     discoverFido2Devices,
     fido2ProtectorKind,
+    queryFido2Capabilities,
     enrollFido2VaultBinding,
     enrollFido2VaultBindingWithPin,
     unlockVaultWithFido2,
@@ -531,6 +533,56 @@ private void printDevice(string label, scope const Fido2DeviceInfo device)
     report(label, "_product=", device.product);
 }
 
+private void printCapabilities(
+    string label,
+    scope const Fido2Capabilities capabilities
+)
+{
+    report(label, "_hmac_secret=", capabilities.hmacSecret);
+    report(
+        label,
+        "_hmac_secret_make_credential=",
+        capabilities.hmacSecretMakeCredential
+    );
+    report(label, "_cred_protect=", capabilities.credProtect);
+    report(
+        label,
+        "_client_pin_supported=",
+        capabilities.clientPinSupported
+    );
+    report(
+        label,
+        "_client_pin_configured=",
+        capabilities.clientPinConfigured
+    );
+    report(
+        label,
+        "_built_in_uv_supported=",
+        capabilities.builtInUserVerificationSupported
+    );
+    report(
+        label,
+        "_built_in_uv_configured=",
+        capabilities.builtInUserVerificationConfigured
+    );
+    report(label, "_uv_modality=", capabilities.uvModality);
+    report(
+        label,
+        "_discoverable_credentials_supported=",
+        capabilities.discoverableCredentialsSupported
+    );
+    report(
+        label,
+        "_discoverable_credentials_remaining=",
+        capabilities.remainingDiscoverableCredentials
+    );
+    report(label, "_algorithm_es256=", capabilities.es256);
+    report(label, "_algorithm_eddsa=", capabilities.edDsa);
+    report(label, "_algorithm_es384=", capabilities.es384);
+    report(label, "_algorithm_rs256=", capabilities.rs256);
+    report(label, "_firmware_version_raw=", capabilities.firmwareVersion);
+}
+
 private bool findDevicePresent(
     scope const Fido2DeviceInfo[] devices,
     string path
@@ -631,6 +683,17 @@ void main(string[] args)
             report("device_index=", i);
             report("device_path=", device.path);
             printDevice("device", device);
+
+            Fido2Capabilities capabilities;
+            enforceStatus(
+                queryFido2Capabilities(
+                    device.path,
+                    capabilities
+                ),
+                CredentialStatus.ok,
+                "query FIDO2 device capabilities"
+            );
+            printCapabilities("device", capabilities);
         }
 
         report("result=DISCOVERY_ONLY");
@@ -668,9 +731,33 @@ void main(string[] args)
 
     report("policy=", options.uv ? "uv-required" : "touch-only");
     printDevice("device_a", deviceAInfo);
-    stdout.flush();
+
+    Fido2Capabilities deviceACapabilities;
+    enforceStatus(
+        queryFido2Capabilities(
+            selectedDeviceA,
+            deviceACapabilities
+        ),
+        CredentialStatus.ok,
+        "query device A capabilities"
+    );
+    printCapabilities("device_a", deviceACapabilities);
+
     if (hasDeviceB)
+    {
         printDevice("device_b", deviceBInfo);
+
+        Fido2Capabilities deviceBCapabilities;
+        enforceStatus(
+            queryFido2Capabilities(
+                options.deviceB,
+                deviceBCapabilities
+            ),
+            CredentialStatus.ok,
+            "query device B capabilities"
+        );
+        printCapabilities("device_b", deviceBCapabilities);
+    }
 
     auto pin = options.uv
         ? readPin()
