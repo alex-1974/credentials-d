@@ -17,7 +17,7 @@ import credentials :
     CredentialStatus,
     SecretBuffer,
     SecretCallback;
-import credentials.backend.vault :
+import credentials.vault :
     EncryptedCredentialVault,
     VaultUnlockMethod,
     VaultWrappingKeySource,
