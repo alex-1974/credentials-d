@@ -1,6 +1,6 @@
 # API stability
 
-credentials-d is preparing its first public release.
+credentials-d v0.1.0 defines the first public consumer API.
 
 This document defines which source-level interfaces are intended for consumers
 and which namespaces remain implementation details.
@@ -62,9 +62,6 @@ but consumer code should not depend on them.
 
 ## Stability policy
 
-Before `v0.1.0`, incompatible API changes are allowed when needed to establish
-a coherent first public contract.
-
 Starting with `v0.1.0`:
 
 - patch releases should not intentionally break documented public source APIs;
@@ -97,7 +94,7 @@ Applications should:
 
 ## Qualification status
 
-The public API is covered by consumer compile/run gates on the supported
+The v0.1.0 public API is covered by consumer compile/run gates on the supported
 compiler baseline.
 
 Platform qualification is separate from source API stability. In particular,

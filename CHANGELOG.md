@@ -4,6 +4,36 @@ All notable changes to this project will be documented here.
 
 ## Unreleased
 
+## v0.1.0 — 2026-10-31
+
+First public release.
+
+For application developers:
+
+- one common `CredentialStore` workflow for saving, reading, updating and
+  removing credentials;
+- persistent platform stores for Linux, Windows and macOS;
+- a portable `EncryptedCredentialVault` for applications that deliberately
+  want their own vault file;
+- optional security-key unlock for encrypted vaults;
+- opaque `CredentialHandle` and `VaultUnlockMethod` values that can be kept
+  in normal application settings;
+- explicit `CredentialStatus` results and `StoreCapabilities` for UI and
+  scheduling decisions;
+- public consumer modules with implementation modules kept outside the
+  compatibility contract;
+- buildable examples for the basic store, encrypted vault and security-key
+  workflows;
+- Ddoc/DDOX documentation and CI examples aligned with the public consumer API.
+
+Qualification status:
+
+- Linux, Windows, encrypted-vault and the tested physical security-key paths
+  have qualification coverage;
+- macOS is compiled and fail-closed tested in CI, but final production
+  qualification still requires a properly signed/provisioned macOS
+  application context.
+
 - Add buildable consumer examples for the core store, encrypted vault and
   security-key vault unlock flows; CI and release gates now compile/run these
   examples as public-API smoke tests.
