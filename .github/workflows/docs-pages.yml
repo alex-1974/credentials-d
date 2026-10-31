@@ -51,7 +51,7 @@ jobs:
         shell: bash
         run: |
           rm -rf backends/linux-secret-service/docs
-          dub build --root=backends/linux-secret-service --build=ddox --compiler="$DC" --force
+          (cd backends/linux-secret-service && dub build --build=ddox --compiler="$DC" --force)
           mkdir -p _pages/api/linux
           cp -a backends/linux-secret-service/docs/. _pages/api/linux/
 
@@ -59,7 +59,7 @@ jobs:
         shell: bash
         run: |
           rm -rf backends/encrypted-vault/docs
-          dub build --root=backends/encrypted-vault --build=ddox --compiler="$DC" --force
+          (cd backends/encrypted-vault && dub build --build=ddox --compiler="$DC" --force)
           mkdir -p _pages/api/vault
           cp -a backends/encrypted-vault/docs/. _pages/api/vault/
 
@@ -67,7 +67,7 @@ jobs:
         shell: bash
         run: |
           rm -rf backends/fido2-vault/docs
-          dub build --root=backends/fido2-vault --build=ddox --compiler="$DC" --force
+          (cd backends/fido2-vault && dub build --build=ddox --compiler="$DC" --force)
           mkdir -p _pages/api/security-key
           cp -a backends/fido2-vault/docs/. _pages/api/security-key/
 
@@ -95,7 +95,7 @@ jobs:
         shell: bash
         run: |
           rm -rf backends/windows/docs
-          dub build --root=backends/windows --build=ddox --compiler="$DC" --force
+          (cd backends/windows && dub build --build=ddox --compiler="$DC" --force)
           mkdir -p _pages/api/windows
           cp -a backends/windows/docs/. _pages/api/windows/
 
@@ -123,7 +123,7 @@ jobs:
         shell: bash
         run: |
           rm -rf backends/macos-data-protection/docs
-          dub build --root=backends/macos-data-protection --build=ddox --compiler="$DC" --force
+          (cd backends/macos-data-protection && dub build --build=ddox --compiler="$DC" --force)
           mkdir -p _pages/api/macos
           cp -a backends/macos-data-protection/docs/. _pages/api/macos/
 
