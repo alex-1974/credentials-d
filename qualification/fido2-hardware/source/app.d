@@ -44,6 +44,12 @@ import std.stdio :
 private enum string defaultRpId =
     "credentials-d.local";
 
+private void report(Args...)(Args args)
+{
+    stdout.writeln(args);
+    stdout.flush();
+}
+
 private struct Options
 {
     bool discoverOnly;
@@ -455,8 +461,8 @@ private CredentialStatus unlockEnvelope(
 
 private void printDevice(string label, scope const Fido2DeviceInfo device)
 {
-    writeln(label, "_manufacturer=", device.manufacturer);
-    writeln(label, "_product=", device.product);
+    report(label, "_manufacturer=", device.manufacturer);
+    report(label, "_product=", device.product);
 }
 
 private bool findDevicePresent(
@@ -548,20 +554,20 @@ void main(string[] args)
     const devices = discover();
     stderr.writeln("qualification_stage=discovery-complete");
 
-    writeln("qualification=fido2-hardware-v1");
-    writeln("d_frontend=", __VERSION__);
-    writeln("discovered_devices=", devices.length);
+    report("qualification=fido2-hardware-v1");
+    report("d_frontend=", __VERSION__);
+    report("discovered_devices=", devices.length);
 
     if (options.discoverOnly)
     {
         foreach (i, ref const device; devices)
         {
-            writeln("device_index=", i);
-            writeln("device_path=", device.path);
+            report("device_index=", i);
+            report("device_path=", device.path);
             printDevice("device", device);
         }
 
-        writeln("result=DISCOVERY_ONLY");
+        report("result=DISCOVERY_ONLY");
         return;
     }
 
@@ -579,7 +585,7 @@ void main(string[] args)
             : "device A is not currently discoverable"
     );
 
-    writeln("device_a_path=", selectedDeviceA);
+    report("device_a_path=", selectedDeviceA);
 
     Fido2DeviceInfo deviceBInfo;
     bool hasDeviceB;
@@ -594,7 +600,7 @@ void main(string[] args)
         enforce(hasDeviceB, "device B is not currently discoverable");
     }
 
-    writeln("policy=", options.uv ? "uv-required" : "user-presence");
+    report("policy=", options.uv ? "uv-required" : "user-presence");
     printDevice("device_a", deviceAInfo);
     stdout.flush();
     if (hasDeviceB)
@@ -637,8 +643,8 @@ void main(string[] args)
 
     if (enrollmentStatus == CredentialStatus.unsupported)
     {
-        writeln("result=UNSUPPORTED");
-        writeln("unsupported_stage=enrollment-policy");
+        report("result=UNSUPPORTED");
+        report("unsupported_stage=enrollment-policy");
         return;
     }
 
@@ -730,9 +736,9 @@ void main(string[] args)
         "different salts produced the same hmac-secret"
     );
 
-    writeln("hmac_same_salt=PASS");
-    writeln("hmac_different_salt=PASS");
-    writeln("device_path_not_persisted=PASS");
+    report("hmac_same_salt=PASS");
+    report("hmac_different_salt=PASS");
+    report("device_path_not_persisted=PASS");
 
     if (options.uv)
     {
@@ -754,7 +760,7 @@ void main(string[] args)
             CredentialStatus.permissionDenied,
             "wrong-PIN qualification"
         );
-        writeln("wrong_pin_fail_closed=PASS");
+        report("wrong_pin_fail_closed=PASS");
     }
 
     mkdirRecurse(options.workDir);
@@ -917,8 +923,8 @@ void main(string[] args)
     );
     enforce(acquired, "synthetic credential visitor was not called");
 
-    writeln("vault_reopen_fido2_unlock=PASS");
-    writeln("binary_secret_roundtrip=PASS");
+    report("vault_reopen_fido2_unlock=PASS");
+    report("binary_secret_roundtrip=PASS");
 
     reopened.lock();
 
@@ -953,7 +959,7 @@ void main(string[] args)
     );
     enforce(reopened.isLocked, "tampered envelope unlocked the vault");
 
-    writeln("tampered_envelope_rejected=PASS");
+    report("tampered_envelope_rejected=PASS");
 
     stderr.writeln(
         "ACTION_REQUIRED=Touch the authenticator when it starts blinking to enroll an independent wrong-credential test binding."
@@ -998,7 +1004,7 @@ void main(string[] args)
         reopened.isLocked,
         "wrong FIDO2 credential unlocked the vault"
     );
-    writeln("wrong_credential_rejected=PASS");
+    report("wrong_credential_rejected=PASS");
 
     if (hasDeviceB)
     {
@@ -1016,14 +1022,14 @@ void main(string[] args)
         );
         enforce(reopened.isLocked, "wrong authenticator unlocked the vault");
 
-        writeln(
+        report(
             "wrong_authenticator_rejected=PASS status=",
             cast(int)wrongDeviceStatus
         );
     }
     else
     {
-        writeln("wrong_authenticator_rejected=SKIP_NO_SECOND_KEY");
+        report("wrong_authenticator_rejected=SKIP_NO_SECOND_KEY");
     }
 
     enforceStatus(
@@ -1031,7 +1037,7 @@ void main(string[] args)
         CredentialStatus.ok,
         "passphrase recovery after FIDO2 failure"
     );
-    writeln("passphrase_recovery=PASS");
+    report("passphrase_recovery=PASS");
 
     if (hasDeviceB)
     {
@@ -1097,17 +1103,17 @@ void main(string[] args)
         );
         enforce(backupAcquired, "backup-key visitor not called");
 
-        writeln("backup_key_independent_unlock=PASS");
-        writeln(
+        report("backup_key_independent_unlock=PASS");
+        report(
             "device_a_removed_check=",
             options.confirmRemoveA ? "PASS" : "SKIP"
         );
     }
     else
     {
-        writeln("backup_key_independent_unlock=SKIP_NO_SECOND_KEY");
-        writeln("device_a_removed_check=SKIP_NO_SECOND_KEY");
+        report("backup_key_independent_unlock=SKIP_NO_SECOND_KEY");
+        report("device_a_removed_check=SKIP_NO_SECOND_KEY");
     }
 
-    writeln("result=PASS");
+    report("result=PASS");
 }
