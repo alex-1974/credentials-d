@@ -69,9 +69,19 @@ final class EncryptedCredentialVault : CredentialStore
     }
 
     /**
-     * Create a new vault without replacing an existing final path.
+     * Create a new encrypted credential vault.
      *
-     * On success, result is returned unlocked.
+     * The target path is never silently replaced. On success, the returned
+     * vault is already unlocked.
+     *
+     * Params:
+     *     path = Final vault file path.
+     *     ns = Application credential namespace.
+     *     passphrase = Passphrase used to protect the initial vault key.
+     *     result = Receives the new unlocked vault on success.
+     *
+     * Returns:
+     *     CredentialStatus.ok on success, otherwise the file/crypto outcome.
      */
     static CredentialStatus createNew(
         string path,
@@ -122,6 +132,15 @@ final class EncryptedCredentialVault : CredentialStore
      * Open and structurally validate an existing vault in the locked state.
      *
      * No password KDF or plaintext decryption occurs here.
+     *
+     * Params:
+     *     path = Existing vault file path.
+     *     ns = Expected application credential namespace.
+     *     result = Receives the locked vault instance on success.
+     *
+     * Returns:
+     *     CredentialStatus.ok on success. corruptedData indicates malformed or
+     *     namespace-incompatible persisted data.
      */
     static CredentialStatus openExisting(
         string path,
@@ -155,9 +174,17 @@ final class EncryptedCredentialVault : CredentialStore
     }
 
     /**
-     * Unlock with a passphrase.
+     * Unlock this vault with its passphrase.
      *
-     * Successful unlock retains only the random vault key.
+     * Successful unlock retains only the random vault key; the passphrase is
+     * not retained.
+     *
+     * Params:
+     *     passphrase = Secret passphrase buffer.
+     *
+     * Returns:
+     *     CredentialStatus.ok when unlocked, otherwise the validation/backend
+     *     outcome.
      */
     CredentialStatus unlock(
         scope ref const SecretBuffer passphrase
@@ -198,7 +225,7 @@ final class EncryptedCredentialVault : CredentialStore
     }
 
     /**
-     * Clear the retained vault key.
+     * Lock the vault immediately by clearing the retained vault key.
      */
     void lock() @safe
     {
@@ -208,6 +235,9 @@ final class EncryptedCredentialVault : CredentialStore
         }
     }
 
+    /**
+     * Whether this vault currently requires an unlock operation.
+     */
     @property bool isLocked() const @safe
     {
         synchronized (this)
@@ -229,7 +259,7 @@ final class EncryptedCredentialVault : CredentialStore
             true,
             StoreProtection.encryptedVault,
             StoreUnlockModel.application,
-                        StoreMobility.portableFile,
+            StoreMobility.portableFile,
             true,
             StoreBlocking.mayBlock,
             StoreConcurrency.serialized
