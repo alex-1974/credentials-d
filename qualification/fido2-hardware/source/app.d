@@ -9,15 +9,14 @@ import credentials :
     CredentialHandle,
     CredentialNamespace,
     CredentialStatus,
-    SecretBuffer;
+    SecretBuffer,
+    SecretVisitor;
 import credentials.backend.fido2 :
     Fido2DeviceInfo,
     Fido2VaultBinding,
     Fido2VerificationPolicy,
-    addFido2TouchVaultUnlockWithEnrollmentPin,
-    addFido2VaultUnlock,
-    addFido2VaultUnlockWithPin,
     discoverFido2Devices,
+    fido2ProtectorKind,
     enrollFido2VaultBinding,
     enrollFido2VaultBindingWithPin,
     unlockVaultWithFido2,
@@ -28,6 +27,8 @@ import credentials.backend.fido2 :
 import credentials.backend.vault :
     EncryptedVaultCredentialStore,
     VaultUnlockEnvelope,
+    VaultWrappingKeySource,
+    createVaultUnlockEnvelopeForStore,
     protectorSaltBytes;
 import std.conv : to;
 import std.file :
@@ -50,6 +51,16 @@ private void report(Args...)(Args args)
 {
     stdout.writeln(args);
     stdout.flush();
+}
+
+private void promptTouch(string action)
+{
+    stderr.writeln(
+        "ACTION_REQUIRED=",
+        action,
+        " Release the sensor, wait for blinking, then touch once."
+    );
+    stderr.flush();
 }
 
 private struct Options
@@ -340,12 +351,15 @@ private CredentialStatus enroll(
     const Options options,
     string devicePath,
     scope ref const SecretBuffer pin,
+    string touchAction,
     out Fido2VaultBinding binding
 )
 {
     const policy = options.uv
         ? Fido2VerificationPolicy.userVerificationRequired
-        : Fido2VerificationPolicy.userPresence;
+        : Fido2VerificationPolicy.touchOnly;
+
+    promptTouch(touchAction);
 
     if (!pin.empty)
         return enrollFido2VaultBindingWithPin(
@@ -364,14 +378,14 @@ private CredentialStatus enroll(
     );
 }
 
-private CredentialStatus derive(
+private CredentialStatus deriveCore(
     const Options options,
     string devicePath,
     scope const Fido2VaultBinding binding,
     scope const ubyte[protectorSaltBytes] salt,
     scope ref const SecretBuffer pin,
     ref ubyte[32] output
-)
+) @safe
 {
     bool called;
     CredentialStatus status;
@@ -407,46 +421,80 @@ private CredentialStatus derive(
     return status;
 }
 
+private CredentialStatus derive(
+    const Options options,
+    string devicePath,
+    scope const Fido2VaultBinding binding,
+    scope const ubyte[protectorSaltBytes] salt,
+    scope ref const SecretBuffer pin,
+    string touchAction,
+    ref ubyte[32] output
+)
+{
+    promptTouch(touchAction);
+    return deriveCore(
+        options,
+        devicePath,
+        binding,
+        salt,
+        pin,
+        output
+    );
+}
+
 private CredentialStatus addEnvelope(
     const Options options,
     EncryptedVaultCredentialStore store,
     string devicePath,
     scope ref const SecretBuffer pin,
+    string label,
     out VaultUnlockEnvelope envelope
 )
 {
-    const policy = options.uv
-        ? Fido2VerificationPolicy.userVerificationRequired
-        : Fido2VerificationPolicy.userPresence;
+    envelope = VaultUnlockEnvelope.init;
 
-    if (options.uv)
-    {
-        return addFido2VaultUnlockWithPin(
-            store,
-            devicePath,
-            options.rpId,
-            policy,
-            pin,
-            envelope
-        );
-    }
-
-    if (!pin.empty)
-    {
-        return addFido2TouchVaultUnlockWithEnrollmentPin(
-            store,
-            devicePath,
-            options.rpId,
-            pin,
-            envelope
-        );
-    }
-
-    return addFido2VaultUnlock(
-        store,
+    Fido2VaultBinding binding;
+    auto status = enroll(
+        options,
         devicePath,
-        options.rpId,
-        Fido2VerificationPolicy.touchOnly,
+        pin,
+        label ~ " credential enrollment.",
+        binding
+    );
+    if (status != CredentialStatus.ok)
+        return status;
+
+    const encodedBinding = binding.serialize();
+
+    VaultWrappingKeySource source =
+        (scope const ubyte[protectorSaltBytes] salt,
+         scope SecretVisitor visitor) @safe
+        {
+            ubyte[32] output;
+            scope(exit) wipe(output[]);
+
+            const deriveStatus = deriveCore(
+                options,
+                devicePath,
+                binding,
+                salt,
+                pin,
+                output
+            );
+            if (deriveStatus != CredentialStatus.ok)
+                return deriveStatus;
+
+            visitor(output[]);
+            return CredentialStatus.ok;
+        };
+
+    promptTouch(label ~ " hmac-secret key derivation.");
+
+    return createVaultUnlockEnvelopeForStore(
+        store,
+        fido2ProtectorKind,
+        encodedBinding,
+        source,
         envelope
     );
 }
@@ -456,9 +504,12 @@ private CredentialStatus unlockEnvelope(
     EncryptedVaultCredentialStore store,
     string devicePath,
     scope const VaultUnlockEnvelope envelope,
-    scope ref const SecretBuffer pin
+    scope ref const SecretBuffer pin,
+    string touchAction
 )
 {
+    promptTouch(touchAction);
+
     if (options.uv)
         return unlockVaultWithFido2WithPin(
             store,
@@ -615,7 +666,7 @@ void main(string[] args)
         enforce(hasDeviceB, "device B is not currently discoverable");
     }
 
-    report("policy=", options.uv ? "uv-required" : "user-presence");
+    report("policy=", options.uv ? "uv-required" : "touch-only");
     printDevice("device_a", deviceAInfo);
     stdout.flush();
     if (hasDeviceB)
@@ -630,6 +681,7 @@ void main(string[] args)
         options,
         selectedDeviceA,
         pin,
+        "Initial deterministic credential enrollment.",
         deterministicBinding
     );
 
@@ -643,15 +695,11 @@ void main(string[] args)
         stderr.flush();
         pin = readPin();
 
-        stderr.writeln(
-            "ACTION_REQUIRED=Touch the authenticator when it starts blinking."
-        );
-        stderr.flush();
-
         enrollmentStatus = enroll(
             options,
             selectedDeviceA,
             pin,
+            "Retry deterministic credential enrollment after PIN authorization.",
             deterministicBinding
         );
     }
@@ -712,6 +760,7 @@ void main(string[] args)
             parsedBinding,
             salt1,
             pin,
+            "hmac-secret derivation 1/3 (baseline salt).",
             key1
         ),
         CredentialStatus.ok,
@@ -724,6 +773,7 @@ void main(string[] args)
             parsedBinding,
             salt1,
             pin,
+            "hmac-secret derivation 2/3 (repeat baseline salt).",
             key1Repeat
         ),
         CredentialStatus.ok,
@@ -736,6 +786,7 @@ void main(string[] args)
             parsedBinding,
             salt2,
             pin,
+            "hmac-secret derivation 3/3 (different salt).",
             key2
         ),
         CredentialStatus.ok,
@@ -767,6 +818,7 @@ void main(string[] args)
             parsedBinding,
             salt1,
             wrongPin,
+            "UV wrong-PIN rejection check.",
             wrongPinOutput
         );
 
@@ -847,6 +899,7 @@ void main(string[] args)
         store,
         selectedDeviceA,
         pin,
+        "Envelope A",
         envelopeA
     );
 
@@ -860,16 +913,12 @@ void main(string[] args)
         stderr.flush();
         pin = readPin();
 
-        stderr.writeln(
-            "ACTION_REQUIRED=Touch the authenticator when it starts blinking."
-        );
-        stderr.flush();
-
         envelopeAStatus = addEnvelope(
             options,
             store,
             selectedDeviceA,
             pin,
+            "Envelope A retry",
             envelopeA
         );
     }
@@ -914,7 +963,8 @@ void main(string[] args)
             reopened,
             selectedDeviceA,
             parsedEnvelopeA,
-            pin
+            pin,
+            "Unlock vault with envelope A."
         ),
         CredentialStatus.ok,
         "unlock with FIDO2 envelope A"
@@ -967,7 +1017,8 @@ void main(string[] args)
             reopened,
             selectedDeviceA,
             tamperedEnvelope,
-            pin
+            pin,
+            "Tampered-envelope rejection check."
         ),
         CredentialStatus.permissionDenied,
         "tampered FIDO2 envelope"
@@ -976,17 +1027,13 @@ void main(string[] args)
 
     report("tampered_envelope_rejected=PASS");
 
-    stderr.writeln(
-        "ACTION_REQUIRED=Touch the authenticator when it starts blinking to enroll an independent wrong-credential test binding."
-    );
-    stderr.flush();
-
     Fido2VaultBinding wrongCredentialBinding;
     enforceStatus(
         enroll(
             options,
             selectedDeviceA,
             pin,
+            "Independent wrong-credential enrollment.",
             wrongCredentialBinding
         ),
         CredentialStatus.ok,
@@ -999,18 +1046,14 @@ void main(string[] args)
             wrongCredentialBinding
         );
 
-    stderr.writeln(
-        "ACTION_REQUIRED=Touch the authenticator when it starts blinking for the wrong-credential rejection check."
-    );
-    stderr.flush();
-
     enforceStatus(
         unlockEnvelope(
             options,
             reopened,
             selectedDeviceA,
             wrongCredentialEnvelope,
-            pin
+            pin,
+            "Wrong-credential rejection check."
         ),
         CredentialStatus.permissionDenied,
         "wrong FIDO2 credential"
@@ -1028,7 +1071,8 @@ void main(string[] args)
             reopened,
             options.deviceB,
             parsedEnvelopeA,
-            pin
+            pin,
+            "Wrong-authenticator rejection check on key B."
         );
 
         enforce(
@@ -1063,6 +1107,7 @@ void main(string[] args)
                 reopened,
                 options.deviceB,
                 pin,
+                "Envelope B",
                 envelopeB
             ),
             CredentialStatus.ok,
@@ -1094,7 +1139,8 @@ void main(string[] args)
                 reopened,
                 options.deviceB,
                 parsedEnvelopeB,
-                pin
+                pin,
+                "Unlock vault with independent envelope B."
             ),
             CredentialStatus.ok,
             "unlock with independent FIDO2 envelope B"

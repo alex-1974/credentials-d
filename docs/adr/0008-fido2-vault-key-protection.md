@@ -307,6 +307,35 @@ FIDO2 hardware assistance does not protect against:
 A cloned authenticator credential, where the authenticator ecosystem permits
 one, inherits the same ability to derive its credential-scoped secret.
 
+## Qualification status
+
+Physical qualification for the FIDO2 protector was completed on 2026-10-31
+against a YubiKey 5.2.4 supporting CTAP2 hmac-secret and credProtect.
+
+The retained evidence covers:
+
+- physical MakeCredential with hmac-secret;
+- touch-only/user-presence hmac-secret derivation without PIN during normal use;
+- UV/PIN operation;
+- wrong-PIN fail-closed behavior;
+- deterministic same-salt and distinct different-salt output;
+- persisted binding without runtime device path;
+- vault reopen and FIDO2 unlock;
+- tampered-envelope rejection;
+- independent wrong-credential rejection on the same authenticator;
+- passphrase recovery.
+
+DMD 2.111.0 was exercised physically. The locally available LDC 1.42.0 was
+also exercised physically; normal CI covers the supported LDC 1.41.0 baseline.
+
+No second independent physical authenticator was available during qualification.
+The optional wrong-authenticator, backup-key and physical-removal scenarios are
+therefore not claimed as physically exercised.
+
+The explicit `touchOnly` API added later is wire-compatible with the already
+qualified `userPresence` policy and delegates to the same non-UV assertion
+path; it does not introduce a new serialized format or cryptographic path.
+
 ## Verification
 
 Normal CI can prove:

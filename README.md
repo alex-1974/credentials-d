@@ -237,8 +237,9 @@ random vault key
 
 Two interaction policies are explicit:
 
-- `userPresence`: touch/user presence with no UV request; the returned
-  assertion is rejected if the authenticator nevertheless reports UV;
+- `touchOnly` (wire-compatible alias of `userPresence`): normal vault
+  unlock is authenticator presence plus physical touch, with no PIN/UV request;
+  older authenticators may still require a PIN once during MakeCredential;
 - `userVerificationRequired`: UV required and enrollment requests
   `credProtect=UV_REQUIRED`; unsupported authenticators fail rather than
   silently downgrading.
@@ -256,8 +257,13 @@ the persisted binding remains `userPresence`; later hmac-secret derivation
 still occurs without PIN/UV.
 
 CI qualifies the ABI, parsing, envelope cryptography and no-hardware discovery
-path. Production claims involving an actual authenticator require the separate
-physical-device qualification.
+path. The physical-authenticator contract was qualified on 2026-10-31 with a
+YubiKey 5.2.4 for hmac-secret, touch-only/user-presence, UV/PIN, wrong
+credential, tamper rejection and passphrase recovery. DMD 2.111.0 was exercised
+physically; LDC was exercised physically with the locally available 1.42.0,
+while CI covers the supported LDC 1.41.0 baseline. A second independent physical
+authenticator was not available, so the optional two-key/removal scenarios
+remain unexercised.
 
 See [ADR 0008](docs/adr/0008-fido2-vault-key-protection.md).
 
