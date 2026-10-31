@@ -236,6 +236,9 @@ extern(C) @nogc nothrow
     size_t fido_cred_hmac_secret_len(
         const(fido_cred_t)* cred
     );
+    ubyte fido_cred_flags(
+        const(fido_cred_t)* cred
+    );
 
     fido_assert_t* fido_assert_new();
     void fido_assert_free(fido_assert_t** assertion);
