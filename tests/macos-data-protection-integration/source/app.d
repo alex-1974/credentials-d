@@ -32,8 +32,8 @@ void main()
     const capabilities = store.capabilities;
     assert(capabilities.persistent);
     assert(capabilities.protection ==
-        StoreProtection.nativeUserCredentialStore);
-    assert(capabilities.unlockModel == StoreUnlockModel.osManaged);
+        StoreProtection.operatingSystem);
+    assert(capabilities.unlockModel == StoreUnlockModel.operatingSystem);
     assert(capabilities.mobility == StoreMobility.localDevice);
     assert(capabilities.blocking == StoreBlocking.mayBlock);
     assert(capabilities.concurrency == StoreConcurrency.serialized);
