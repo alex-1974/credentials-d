@@ -378,18 +378,15 @@ private CredentialStatus enroll(
     );
 }
 
-private CredentialStatus derive(
+private CredentialStatus deriveCore(
     const Options options,
     string devicePath,
     scope const Fido2VaultBinding binding,
     scope const ubyte[protectorSaltBytes] salt,
     scope ref const SecretBuffer pin,
-    string touchAction,
     ref ubyte[32] output
-)
+) @safe
 {
-    promptTouch(touchAction);
-
     bool called;
     CredentialStatus status;
 
@@ -424,6 +421,27 @@ private CredentialStatus derive(
     return status;
 }
 
+private CredentialStatus derive(
+    const Options options,
+    string devicePath,
+    scope const Fido2VaultBinding binding,
+    scope const ubyte[protectorSaltBytes] salt,
+    scope ref const SecretBuffer pin,
+    string touchAction,
+    ref ubyte[32] output
+)
+{
+    promptTouch(touchAction);
+    return deriveCore(
+        options,
+        devicePath,
+        binding,
+        salt,
+        pin,
+        output
+    );
+}
+
 private CredentialStatus addEnvelope(
     const Options options,
     EncryptedVaultCredentialStore store,
@@ -455,13 +473,12 @@ private CredentialStatus addEnvelope(
             ubyte[32] output;
             scope(exit) wipe(output[]);
 
-            const deriveStatus = derive(
+            const deriveStatus = deriveCore(
                 options,
                 devicePath,
                 binding,
                 salt,
                 pin,
-                label ~ " hmac-secret key derivation.",
                 output
             );
             if (deriveStatus != CredentialStatus.ok)
@@ -470,6 +487,8 @@ private CredentialStatus addEnvelope(
             visitor(output[]);
             return CredentialStatus.ok;
         };
+
+    promptTouch(label ~ " hmac-secret key derivation.");
 
     return createVaultUnlockEnvelopeForStore(
         store,
