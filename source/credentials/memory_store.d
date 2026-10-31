@@ -11,7 +11,7 @@ import credentials.secret : SecretBuffer;
 import credentials.store :
     CredentialStatus,
     CredentialStore,
-    SecretVisitor,
+    SecretCallback,
     StoreBlocking,
     StoreCapabilities,
     StoreConcurrency,
@@ -77,7 +77,7 @@ final class MemoryCredentialStore : CredentialStore
         );
     }
 
-    override CredentialStatus store(
+    override CredentialStatus save(
         scope ref const SecretBuffer secret,
         out CredentialHandle handle
     ) @safe
@@ -96,9 +96,9 @@ final class MemoryCredentialStore : CredentialStore
         return CredentialStatus.ok;
     }
 
-    override CredentialStatus acquire(
+    override CredentialStatus withSecret(
         CredentialHandle handle,
-        scope SecretVisitor visitor
+        scope SecretCallback visitor
     ) @safe
     {
         if (!handle.valid || visitor is null)
@@ -115,7 +115,7 @@ final class MemoryCredentialStore : CredentialStore
         return CredentialStatus.ok;
     }
 
-    override CredentialStatus replace(
+    override CredentialStatus update(
         CredentialHandle handle,
         scope ref const SecretBuffer replacement
     ) @safe
@@ -198,11 +198,11 @@ unittest
     auto first = SecretBuffer(cast(const(ubyte)[]) "alpha");
 
     CredentialHandle handle;
-    assert(store.store(first, handle) == CredentialStatus.ok);
+    assert(store.save(first, handle) == CredentialStatus.ok);
     assert(handle.valid);
 
     bool acquired;
-    assert(store.acquire(handle, (scope const(ubyte)[] bytes) @safe
+    assert(store.withSecret(handle, (scope const(ubyte)[] bytes) @safe
     {
         assert(bytes == cast(const(ubyte)[]) "alpha");
         acquired = true;
@@ -210,15 +210,15 @@ unittest
     assert(acquired);
 
     auto second = SecretBuffer(cast(const(ubyte)[]) "beta");
-    assert(store.replace(handle, second) == CredentialStatus.ok);
+    assert(store.update(handle, second) == CredentialStatus.ok);
 
-    assert(store.acquire(handle, (scope const(ubyte)[] bytes) @safe
+    assert(store.withSecret(handle, (scope const(ubyte)[] bytes) @safe
     {
         assert(bytes == cast(const(ubyte)[]) "beta");
     }) == CredentialStatus.ok);
 
     assert(store.remove(handle) == CredentialStatus.ok);
-    assert(store.acquire(handle, (scope const(ubyte)[]) @safe {}) ==
+    assert(store.withSecret(handle, (scope const(ubyte)[]) @safe {}) ==
         CredentialStatus.notFound);
     assert(store.remove(handle) == CredentialStatus.notFound);
 }
@@ -243,11 +243,11 @@ unittest
     CredentialHandle firstHandle;
     CredentialHandle secondHandle;
 
-    assert(firstStore.store(firstSecret, firstHandle) == CredentialStatus.ok);
-    assert(secondStore.store(secondSecret, secondHandle) == CredentialStatus.ok);
+    assert(firstStore.save(firstSecret, firstHandle) == CredentialStatus.ok);
+    assert(secondStore.save(secondSecret, secondHandle) == CredentialStatus.ok);
 
     bool called;
-    assert(secondStore.acquire(firstHandle, (scope const(ubyte)[]) @safe
+    assert(secondStore.withSecret(firstHandle, (scope const(ubyte)[]) @safe
     {
         called = true;
     }) == CredentialStatus.invalidInput);
