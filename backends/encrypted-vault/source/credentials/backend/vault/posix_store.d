@@ -229,8 +229,7 @@ final class EncryptedCredentialVault : CredentialStore
             true,
             StoreProtection.encryptedVault,
             StoreUnlockModel.application,
-            false,
-            StoreMobility.portableFile,
+                        StoreMobility.portableFile,
             true,
             StoreBlocking.mayBlock,
             StoreConcurrency.serialized
@@ -278,7 +277,7 @@ final class EncryptedCredentialVault : CredentialStore
             fileStatus = replaceVaultImage(path_, image);
 
             if (fileStatus == VaultFileStatus.commitUncertain)
-                return CredentialStatus.commitUncertain;
+                return CredentialStatus.writeOutcomeUnknown;
 
             if (fileStatus != VaultFileStatus.ok)
             {
@@ -369,7 +368,7 @@ final class EncryptedCredentialVault : CredentialStore
 
             fileStatus = replaceVaultImage(path_, image);
             if (fileStatus == VaultFileStatus.commitUncertain)
-                return CredentialStatus.commitUncertain;
+                return CredentialStatus.writeOutcomeUnknown;
 
             return mapFileForAccess(fileStatus);
         }
@@ -409,7 +408,7 @@ final class EncryptedCredentialVault : CredentialStore
 
             fileStatus = replaceVaultImage(path_, image);
             if (fileStatus == VaultFileStatus.commitUncertain)
-                return CredentialStatus.commitUncertain;
+                return CredentialStatus.writeOutcomeUnknown;
 
             return mapFileForAccess(fileStatus);
         }
@@ -471,7 +470,7 @@ final class EncryptedCredentialVault : CredentialStore
             if (!copied)
             {
                 vaultKey[] = 0;
-                return CredentialStatus.backendFailure;
+                return CredentialStatus.storageFailure;
             }
 
             return CredentialStatus.ok;
@@ -651,11 +650,11 @@ final class EncryptedCredentialVault : CredentialStore
             case VaultCoreStatus.tooLarge:
                 return CredentialStatus.tooLarge;
             case VaultCoreStatus.corruptData:
-                return CredentialStatus.corruptData;
+                return CredentialStatus.corruptedData;
             case VaultCoreStatus.invalidInput:
                 return CredentialStatus.invalidInput;
             case VaultCoreStatus.backendFailure:
-                return CredentialStatus.backendFailure;
+                return CredentialStatus.storageFailure;
         }
     }
 
@@ -677,9 +676,9 @@ final class EncryptedCredentialVault : CredentialStore
             case VaultFileStatus.tooLarge:
                 return CredentialStatus.tooLarge;
             case VaultFileStatus.commitUncertain:
-                return CredentialStatus.commitUncertain;
+                return CredentialStatus.writeOutcomeUnknown;
             case VaultFileStatus.ioFailure:
-                return CredentialStatus.backendFailure;
+                return CredentialStatus.storageFailure;
         }
     }
 
@@ -689,7 +688,7 @@ final class EncryptedCredentialVault : CredentialStore
     {
         if (status == VaultFileStatus.tooLarge ||
             status == VaultFileStatus.unsafeState)
-            return CredentialStatus.corruptData;
+            return CredentialStatus.corruptedData;
 
         return mapFileForAccess(status);
     }
