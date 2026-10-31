@@ -68,14 +68,14 @@ struct Fido2Capabilities
     bool hmacSecretMakeCredential;
     bool credProtect;
 
-    bool clientPin;
+    bool clientPinSupported;
     bool clientPinConfigured;
 
-    bool builtInUserVerification;
+    bool builtInUserVerificationSupported;
     bool builtInUserVerificationConfigured;
     ulong uvModality;
 
-    bool discoverableCredentials;
+    bool discoverableCredentialsSupported;
     long remainingDiscoverableCredentials = -1;
 
     bool es256;
@@ -158,19 +158,19 @@ CredentialStatus queryFido2Capabilities(
         );
 
     bool optionValue;
-    capabilities.clientPin =
+    capabilities.clientPinSupported =
         findCborOption(info, "clientPin", optionValue);
     capabilities.clientPinConfigured =
-        capabilities.clientPin && optionValue;
+        capabilities.clientPinSupported && optionValue;
 
     optionValue = false;
-    capabilities.builtInUserVerification =
+    capabilities.builtInUserVerificationSupported =
         findCborOption(info, "uv", optionValue);
     capabilities.builtInUserVerificationConfigured =
-        capabilities.builtInUserVerification && optionValue;
+        capabilities.builtInUserVerificationSupported && optionValue;
 
     optionValue = false;
-    capabilities.discoverableCredentials =
+    capabilities.discoverableCredentialsSupported =
         findCborOption(info, "rk", optionValue) && optionValue;
 
     const algorithmCount =
