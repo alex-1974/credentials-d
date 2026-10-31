@@ -40,7 +40,7 @@ void main()
     );
 
     CredentialHandle handle;
-    const storeStatus = store.store(first, handle);
+    const storeStatus = store.save(first, handle);
     assert(storeStatus == CredentialStatus.ok);
     assert(handle.valid);
 
@@ -51,7 +51,7 @@ void main()
     }
 
     bool acquired;
-    assert(store.acquire(handle, (scope const(ubyte)[] bytes) @safe
+    assert(store.withSecret(handle, (scope const(ubyte)[] bytes) @safe
     {
         assert(bytes ==
             cast(const(ubyte)[]) "WINDOWS_INTEGRATION_SENTINEL_ONE");
@@ -62,7 +62,7 @@ void main()
     // A fresh backend instance with the same namespace must be able to use a
     // persisted handle.
     auto reopened = new WindowsCredentialStore(ns);
-    assert(reopened.acquire(handle, (scope const(ubyte)[] bytes) @safe
+    assert(reopened.withSecret(handle, (scope const(ubyte)[] bytes) @safe
     {
         assert(bytes ==
             cast(const(ubyte)[]) "WINDOWS_INTEGRATION_SENTINEL_ONE");
@@ -71,10 +71,10 @@ void main()
     auto replacement = SecretBuffer(
         cast(const(ubyte)[]) "WINDOWS_INTEGRATION_SENTINEL_TWO"
     );
-    assert(reopened.replace(handle, replacement) ==
+    assert(reopened.update(handle, replacement) ==
         CredentialStatus.ok);
 
-    assert(store.acquire(handle, (scope const(ubyte)[] bytes) @safe
+    assert(store.withSecret(handle, (scope const(ubyte)[] bytes) @safe
     {
         assert(bytes ==
             cast(const(ubyte)[]) "WINDOWS_INTEGRATION_SENTINEL_TWO");
@@ -85,7 +85,7 @@ void main()
     auto otherStore = new WindowsCredentialStore(otherNs);
 
     bool wrongNamespaceCalled;
-    assert(otherStore.acquire(
+    assert(otherStore.withSecret(
         handle,
         (scope const(ubyte)[]) @safe
         {
@@ -99,7 +99,7 @@ void main()
     auto oversized = SecretBuffer(oversizedBytes[]);
 
     CredentialHandle oversizedHandle;
-    assert(store.store(oversized, oversizedHandle) ==
+    assert(store.save(oversized, oversizedHandle) ==
         CredentialStatus.tooLarge);
     assert(!oversizedHandle.valid);
 
@@ -108,7 +108,7 @@ void main()
     handle = CredentialHandle.init;
 
     bool calledAfterDelete;
-    assert(reopened.acquire(
+    assert(reopened.withSecret(
         deletedHandle,
         (scope const(ubyte)[]) @safe
         {
