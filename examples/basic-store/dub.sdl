@@ -1,0 +1,8 @@
+name "credentials-d-example-basic-store"
+description "Basic credentials-d consumer example"
+license "MIT"
+
+targetType "executable"
+sourcePaths "source"
+
+dependency "credentials-d" path="../.."

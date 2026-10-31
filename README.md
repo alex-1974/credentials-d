@@ -372,6 +372,17 @@ Parse persisted values with their matching `tryParse()` function.
 Do not interpret their serialized contents. Treat them as opaque values owned by
 credentials-d.
 
+## Complete examples
+
+The repository contains small buildable examples that use only the supported
+consumer API:
+
+- [basic store](examples/basic-store/source/app.d)
+- [encrypted vault](examples/encrypted-vault/source/app.d)
+- [security-key vault unlock](examples/security-key-vault/source/app.d)
+
+They are also built by CI, so the examples stay in sync with the public API.
+
 ## API stability
 
 The intended public surface is documented in

@@ -47,6 +47,10 @@ jobs:
         shell: bash
         run: dub run --root=tests/consumer --compiler="$DC" --force
 
+      - name: Public API example smoke
+        shell: bash
+        run: dub run --root=examples/basic-store --compiler="$DC" --force
+
       - name: CredentialStore contract
         shell: bash
         run: dub run --root=tests/store-contract --compiler="$DC" --force

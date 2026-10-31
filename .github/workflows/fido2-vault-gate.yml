@@ -74,6 +74,14 @@ jobs:
             --compiler="$DC" \
             --force
 
+      - name: Security-key consumer example
+        shell: bash
+        run: |
+          dub build \
+            --root=examples/security-key-vault \
+            --compiler="$DC" \
+            --force
+
       - name: Physical-authenticator qualification harness builds
         shell: bash
         run: |

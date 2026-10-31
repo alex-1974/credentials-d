@@ -4,6 +4,12 @@ All notable changes to this project will be documented here.
 
 ## Unreleased
 
+- Add buildable consumer examples for the core store, encrypted vault and
+  security-key vault unlock flows; CI and release gates now compile/run these
+  examples as public-API smoke tests.
+- Run the encrypted-vault gate on `main` as well as `develop` so release
+  candidates exercise the vault consumer path.
+
 - Rewrite README and public Ddoc/DDOX documentation from a consumer perspective:
   show what each API is for, how to use it, and realistic examples before
   implementation detail.

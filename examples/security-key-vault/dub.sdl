@@ -1,0 +1,8 @@
+name "credentials-d-example-security-key-vault"
+description "Security-key vault unlock consumer example"
+license "MIT"
+
+targetType "executable"
+sourcePaths "source"
+
+dependency "credentials-d:fido2-vault" path="../.."
