@@ -99,6 +99,17 @@ jobs:
               --compiler="$DC" \
               --force
 
+      - name: Encrypted-vault consumer documentation
+        if: startsWith(matrix.compiler, 'dmd-')
+        shell: bash
+        run: |
+          rm -rf backends/encrypted-vault/docs
+          dub build \
+            --root=backends/encrypted-vault \
+            --build=ddox \
+            --compiler="$DC" \
+            --force
+
       - name: Encrypted-vault release build
         shell: bash
         run: |
