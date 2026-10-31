@@ -12,19 +12,17 @@ import credentials :
     StoreMobility,
     StoreProtection,
     StoreUnlockModel;
-import credentials.backend.secret_service : LinuxSecretServiceStore;
+import credentials.linux : LinuxCredentialStore;
 
 private CredentialNamespace namespaceOf(string value)
 {
-    CredentialNamespace ns;
-    assert(CredentialNamespace.tryParse(value, ns));
-    return ns;
+    return CredentialNamespace(value);
 }
 
 private void expectUnavailable()
 {
     auto ns = namespaceOf("org.alex1974.credentials-unavailable");
-    auto store = new LinuxSecretServiceStore(ns);
+    auto store = new LinuxCredentialStore(ns);
     scope(exit) store.close();
 
     auto secret = SecretBuffer(cast(const(ubyte)[]) "unavailable-test");
@@ -37,7 +35,7 @@ private void expectUnavailable()
 private void runIntegration()
 {
     auto ns = namespaceOf("org.alex1974.credentials-integration");
-    auto store = new LinuxSecretServiceStore(ns);
+    auto store = new LinuxCredentialStore(ns);
     scope(exit) store.close();
 
     const capabilities = store.capabilities;
@@ -77,7 +75,7 @@ private void runIntegration()
 
     // A new backend instance with the same namespace must resolve the
     // persistent opaque handle.
-    auto reopened = new LinuxSecretServiceStore(ns);
+    auto reopened = new LinuxCredentialStore(ns);
     scope(exit) reopened.close();
 
     assert(reopened.withSecret(handle, (scope const(ubyte)[] bytes) @safe
@@ -102,7 +100,7 @@ private void runIntegration()
 
     // A different application namespace must fail before native lookup.
     auto otherNs = namespaceOf("org.alex1974.credentials-other");
-    auto otherStore = new LinuxSecretServiceStore(otherNs);
+    auto otherStore = new LinuxCredentialStore(otherNs);
     scope(exit) otherStore.close();
 
     bool wrongNamespaceCalled;
