@@ -35,8 +35,13 @@ version (linux)
  */
 struct SecurityKeyInfo
 {
+    /** Opaque runtime selector passed back to security-key operations. */
     string id;
+
+    /** Human-readable manufacturer text reported by the device, if available. */
     string manufacturer;
+
+    /** Human-readable product text reported by the device, if available. */
     string product;
 }
 
@@ -47,11 +52,22 @@ struct SecurityKeyInfo
  */
 struct SecurityKeyCapabilities
 {
+    /** Whether this key can protect credentials-d vault unlock material. */
     bool supportsVaultUnlock;
+
+    /** Whether setup can combine credential creation and key derivation. */
     bool supportsSingleStepSetup;
+
+    /** Whether the key supports PIN-based verification. */
     bool supportsPin;
+
+    /** Whether a PIN is currently configured on the key. */
     bool pinConfigured;
+
+    /** Whether the key supports built-in verification such as fingerprint. */
     bool supportsBuiltInVerification;
+
+    /** Whether built-in verification is currently configured and usable. */
     bool builtInVerificationConfigured;
 }
 
@@ -69,6 +85,17 @@ enum SecurityKeyAccess
 
 /**
  * Find currently connected security keys.
+ *
+ * Params:
+ *     keys = Receives one runtime descriptor per discovered key.
+ *
+ * Returns:
+ *     CredentialStatus.ok on successful discovery. An empty result with ok
+ *     means no supported key is currently connected.
+ *
+ * Note:
+ *     SecurityKeyInfo.id is a runtime selector and must not be persisted as a
+ *     durable identity.
  */
 CredentialStatus findSecurityKeys(
     out SecurityKeyInfo[] keys
@@ -96,9 +123,16 @@ CredentialStatus findSecurityKeys(
 }
 
 /**
- * Read the capabilities relevant to credentials-d consumers.
+ * Read consumer-relevant capabilities for one connected security key.
  *
  * No touch, PIN, credential creation or secret derivation is performed.
+ *
+ * Params:
+ *     keyId = Opaque runtime id returned by findSecurityKeys().
+ *     capabilities = Receives the capability snapshot on success.
+ *
+ * Returns:
+ *     CredentialStatus.ok on success, otherwise the discovery/backend outcome.
  */
 CredentialStatus getSecurityKeyCapabilities(
     string keyId,
@@ -145,7 +179,17 @@ version (linux)
      * Add a security-key unlock method to an already unlocked vault.
      *
      * The vault's CredentialNamespace is used as the security-key application
-     * scope. Consumers do not need to supply protocol-specific RP identifiers.
+     * scope. Consumers do not need to supply protocol-specific identifiers.
+     *
+     * Params:
+     *     vault = Currently unlocked vault to protect.
+     *     keyId = Runtime id returned by findSecurityKeys().
+     *     access = Required interaction/verification policy.
+     *     method = Receives persistable non-secret unlock metadata on success.
+     *
+     * Returns:
+     *     CredentialStatus.ok on success. userActionRequired means setup needs
+     *     an explicit action that this overload cannot provide, such as a PIN.
      */
     CredentialStatus addSecurityKeyUnlock(
         EncryptedCredentialVault vault,
@@ -171,8 +215,19 @@ version (linux)
     /**
      * Add a security-key unlock method while supplying a PIN.
      *
-     * This overload is useful when the authenticator requires PIN
-     * authorization during setup or when verified-user access is PIN-backed.
+     * Use this overload when setup requires PIN authorization or when
+     * SecurityKeyAccess.verifiedUser is PIN-backed.
+     *
+     * Params:
+     *     vault = Currently unlocked vault to protect.
+     *     keyId = Runtime id returned by findSecurityKeys().
+     *     access = Required interaction/verification policy.
+     *     pin = Secret PIN buffer; it is not persisted by credentials-d.
+     *     method = Receives persistable non-secret unlock metadata on success.
+     *
+     * Returns:
+     *     CredentialStatus.ok on success, otherwise the hardware/backend
+     *     outcome.
      */
     CredentialStatus addSecurityKeyUnlock(
         EncryptedCredentialVault vault,
@@ -200,8 +255,16 @@ version (linux)
     /**
      * Unlock a vault with a security key.
      *
-     * Touch-only methods require physical presence. verifiedUser methods may
-     * be satisfied by built-in verification such as fingerprint.
+     * Touch methods require physical presence. verifiedUser methods may be
+     * satisfied by built-in verification such as fingerprint.
+     *
+     * Params:
+     *     vault = Locked vault instance opened from disk.
+     *     keyId = Runtime id of the connected key.
+     *     method = Persisted non-secret unlock method created earlier.
+     *
+     * Returns:
+     *     CredentialStatus.ok when the vault was unlocked.
      */
     CredentialStatus unlockWithSecurityKey(
         EncryptedCredentialVault vault,

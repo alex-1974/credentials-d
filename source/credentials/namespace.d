@@ -17,9 +17,20 @@ struct CredentialNamespace
     /**
      * Construct an application namespace from trusted configuration.
      *
-     * Invalid namespace text is a programmer/configuration error and throws.
-     * Use tryParse() when reading namespace text from untrusted or persisted
-     * input.
+     * Use tryParse() when reading namespace text from persisted or otherwise
+     * untrusted input.
+     *
+     * Params:
+     *     text = Canonical lowercase reverse-DNS-style namespace.
+     *
+     * Throws:
+     *     Exception when text is not a valid credential namespace.
+     *
+     * Examples:
+     * ---
+     * auto ns = CredentialNamespace("org.example.dunia");
+     * assert(ns.serialize() == "org.example.dunia");
+     * ---
      */
     this(string text) @safe
     {
@@ -47,11 +58,18 @@ struct CredentialNamespace
     }
 
     /**
-     * Parse a canonical credential namespace.
+     * Parse a canonical credential namespace without throwing.
      *
      * Each dot-separated segment may contain lowercase ASCII letters, digits
      * and interior hyphens. Empty segments and leading/trailing hyphens are
      * rejected. The maximum length is deliberately bounded.
+     *
+     * Params:
+     *     text = Candidate namespace text.
+     *     result = Receives the parsed namespace on success, otherwise init.
+     *
+     * Returns:
+     *     true when text is valid and canonical; false otherwise.
      */
     static bool tryParse(string text, out CredentialNamespace result)
         @nogc nothrow pure @safe

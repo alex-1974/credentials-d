@@ -27,6 +27,9 @@ struct CredentialHandle
 
     /**
      * Return the opaque serialized representation for persistence.
+     *
+     * Returns:
+     *     Non-secret opaque text suitable for ordinary application settings.
      */
     string serialize() const @nogc nothrow pure @safe
     {
@@ -38,6 +41,17 @@ struct CredentialHandle
      *
      * The grammar is deliberately narrow and bounded to keep handles
      * single-line and suitable for ordinary configuration stores.
+     *
+     * Params:
+     *     text = Persisted opaque handle text.
+     *     handle = Receives the handle on success, otherwise init.
+     *
+     * Returns:
+     *     true when text is a valid serialized handle; false otherwise.
+     *
+     * Note:
+     *     Parsing proves only syntactic validity. A later store operation still
+     *     verifies that the handle belongs to that backend/store namespace.
      */
     static bool tryParse(string text, out CredentialHandle handle)
         @nogc nothrow pure @safe

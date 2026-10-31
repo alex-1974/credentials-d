@@ -35,6 +35,9 @@ struct SecretBuffer
      *
      * The source remains the caller's responsibility; credentials-d cannot
      * erase it after this constructor returns.
+     *
+     * Params:
+     *     source = Plaintext bytes to copy into owned secret storage.
      */
     this(scope const(ubyte)[] source) @trusted
     {
@@ -80,22 +83,26 @@ struct SecretBuffer
     }
 
     /**
-     * Invoke `visitor` with a scoped, read-only view of the plaintext.
+     * Invoke `callback` with a scoped, read-only view of the plaintext.
      *
      * Under DIP1000, straightforward attempts to retain the view outside the
      * callback are rejected by the compiler.
+     *
+     * Params:
+     *     callback = Function that may use the plaintext only for the duration
+     *     of this call.
      */
     void withBytes(
-        scope void delegate(scope const(ubyte)[]) @safe visitor
+        scope void delegate(scope const(ubyte)[]) @safe callback
     ) const scope @trusted
-    in (visitor !is null)
+    in (callback !is null)
     {
         const(ubyte)[] view;
 
         if (data_ !is null)
             view = data_[0 .. length_];
 
-        visitor(view);
+        callback(view);
     }
 
     /**

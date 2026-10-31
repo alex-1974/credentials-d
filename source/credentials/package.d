@@ -24,8 +24,7 @@ public import credentials.store :
 @("public package example")
 unittest
 {
-    CredentialNamespace ns;
-    assert(CredentialNamespace.tryParse("org.example.credentials", ns));
+    auto ns = CredentialNamespace("org.example.credentials");
 
     auto store = new MemoryCredentialStore(ns);
     scope(exit) store.clearAll();

@@ -16,19 +16,51 @@ import credentials.secret : SecretBuffer;
  */
 enum CredentialStatus
 {
+    /** Operation completed successfully. */
     ok,
+
+    /** The requested credential does not exist. */
     notFound,
+
+    /** The selected store or vault is currently locked. */
     locked,
+
+    /** The operation requires an explicit user action before it can continue. */
     userActionRequired,
+
+    /** The user cancelled an interactive operation. */
     userCancelled,
+
+    /** The selected storage service or device is currently unavailable. */
     unavailable,
+
+    /** The caller or application is not permitted to perform the operation. */
     permissionDenied,
+
+    /** The selected backend cannot provide the requested operation or policy. */
     unsupported,
+
+    /** The supplied secret or persisted object exceeds a supported size limit. */
     tooLarge,
+
+    /** More than one stored record matched where exactly one was required. */
     multipleMatches,
+
+    /** Persisted data failed structural or authenticated validation. */
     corruptedData,
+
+    /**
+     * A write was attempted but the backend cannot prove whether it committed.
+     *
+     * Consumers must not blindly retry an operation that could create a
+     * duplicate record. Re-read or reconcile persistent state first.
+     */
     writeOutcomeUnknown,
+
+    /** Caller-supplied input is malformed, invalid, or belongs elsewhere. */
     invalidInput,
+
+    /** The storage backend failed for a reason not represented above. */
     storageFailure
 }
 
@@ -92,12 +124,30 @@ enum StoreBlocking
  */
 struct StoreCapabilities
 {
+    /** Whether credentials survive the lifetime of the store instance/process. */
     bool persistent;
+
+    /** Protection used for credential plaintext while persisted. */
     StoreProtection protection;
+
+    /** Who or what controls unlocking of the persisted credentials. */
     StoreUnlockModel unlockModel;
+
+    /** Expected persistence/mobility boundary of stored credentials. */
     StoreMobility mobility;
+
+    /**
+     * Whether successful remove() confirms that the logical credential record
+     * no longer resolves through this backend.
+     *
+     * This does not claim forensic erasure of storage media.
+     */
     bool confirmsLogicalDeletion;
+
+    /** Whether normal operations can block or prompt the user. */
     StoreBlocking blocking;
+
+    /** Concurrency contract for one store instance. */
     StoreConcurrency concurrency;
 }
 
@@ -143,6 +193,13 @@ interface CredentialStore
      *
      * The backend must not retain a reference to `secret` beyond the call.
      * On failure, `handle` is invalid.
+     *
+     * Params:
+     *     secret = Owned secret plaintext to persist.
+     *     handle = Receives the opaque non-secret handle on success.
+     *
+     * Returns:
+     *     CredentialStatus.ok on success, otherwise the backend outcome.
      */
     CredentialStatus save(
         scope ref const SecretBuffer secret,
@@ -154,6 +211,14 @@ interface CredentialStore
      *
      * The callback is invoked exactly once on `ok`, and not invoked for any
      * other status. Consumer exceptions propagate normally.
+     *
+     * Params:
+     *     handle = Opaque handle returned by this backend.
+     *     callback = Receives a scoped read-only plaintext view.
+     *
+     * Returns:
+     *     CredentialStatus.ok when the callback ran successfully, otherwise
+     *     the lookup/backend outcome.
      */
     CredentialStatus withSecret(
         CredentialHandle handle,
@@ -164,6 +229,14 @@ interface CredentialStore
      * Replace the credential referenced by `handle`.
      *
      * Replacement never returns the previous plaintext.
+     *
+     * Params:
+     *     handle = Opaque handle of the credential to replace.
+     *     replacement = New secret plaintext.
+     *
+     * Returns:
+     *     CredentialStatus.ok on success, notFound if the record no longer
+     *     exists, or another backend outcome.
      */
     CredentialStatus update(
         CredentialHandle handle,
@@ -175,6 +248,12 @@ interface CredentialStore
      *
      * `notFound` means the handle does not identify a current record.
      * Physical media erasure is not implied.
+     *
+     * Params:
+     *     handle = Opaque handle of the credential to remove.
+     *
+     * Returns:
+     *     CredentialStatus.ok when the logical record was removed.
      */
     CredentialStatus remove(CredentialHandle handle) @safe;
 }
