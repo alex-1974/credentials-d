@@ -4,9 +4,11 @@ on:
   pull_request:
     branches:
       - develop
+      - main
   push:
     branches:
       - develop
+      - main
   workflow_dispatch:
 
 permissions:
@@ -77,6 +79,14 @@ jobs:
         run: |
           dub run \
             --root=tests/encrypted-vault-posix-integration \
+            --compiler="$DC" \
+            --force
+
+      - name: Encrypted-vault consumer example
+        shell: bash
+        run: |
+          dub build \
+            --root=examples/encrypted-vault \
             --compiler="$DC" \
             --force
 
