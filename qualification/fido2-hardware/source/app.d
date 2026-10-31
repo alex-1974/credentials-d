@@ -16,6 +16,10 @@ import credentials.backend.fido2 :
     Fido2DeviceInfo,
     Fido2VaultBinding,
     Fido2VerificationPolicy,
+    addFido2TouchVaultUnlockWithEnrollmentPin,
+    addFido2UserVerificationVaultUnlock,
+    addFido2VaultUnlock,
+    addFido2VaultUnlockWithPin,
     discoverFido2Devices,
     fido2ProtectorKind,
     queryFido2Capabilities,
@@ -486,6 +490,66 @@ private CredentialStatus addEnvelope(
     out VaultUnlockEnvelope envelope
 )
 {
+    Fido2Capabilities capabilities;
+    const capabilityStatus =
+        queryFido2Capabilities(
+            devicePath,
+            capabilities
+        );
+
+    if (capabilityStatus == CredentialStatus.ok &&
+        capabilities.hmacSecretMakeCredential)
+    {
+        report(label, "_enrollment_path=hmac-secret-mc");
+        promptTouch(
+            label ~
+            " hmac-secret-mc credential enrollment and key derivation."
+        );
+
+        if (options.uv)
+        {
+            return addFido2VaultUnlockWithPin(
+                store,
+                devicePath,
+                options.rpId,
+                Fido2VerificationPolicy.userVerificationRequired,
+                pin,
+                envelope
+            );
+        }
+
+        if (options.builtInUv)
+        {
+            return addFido2UserVerificationVaultUnlock(
+                store,
+                devicePath,
+                options.rpId,
+                envelope
+            );
+        }
+
+        if (!pin.empty)
+        {
+            return addFido2TouchVaultUnlockWithEnrollmentPin(
+                store,
+                devicePath,
+                options.rpId,
+                pin,
+                envelope
+            );
+        }
+
+        return addFido2VaultUnlock(
+            store,
+            devicePath,
+            options.rpId,
+            Fido2VerificationPolicy.touchOnly,
+            envelope
+        );
+    }
+
+    report(label, "_enrollment_path=makecredential-plus-getassertion");
+
     envelope = VaultUnlockEnvelope.init;
 
     Fido2VaultBinding binding;
