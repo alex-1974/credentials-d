@@ -21,3 +21,6 @@ subPackage "backends/macos-data-protection"
 subPackage "backends/encrypted-vault"
 
 subPackage "backends/fido2-vault"
+
+// Keep generated API docs focused on the supported consumer surface.
+x:ddoxFilterArgs "--unittest-examples" "--min-protection" "Public" "--ex" "credentials.backend."
