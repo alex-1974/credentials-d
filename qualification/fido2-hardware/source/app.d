@@ -901,7 +901,7 @@ void main(string[] args)
     );
 
     if (!requiresUserVerification(options) &&
-        enrollmentStatus == CredentialStatus.interactionRequired &&
+        enrollmentStatus == CredentialStatus.userActionRequired &&
         pin.empty)
     {
         stderr.writeln(
@@ -1119,7 +1119,7 @@ void main(string[] args)
     );
 
     if (!options.uv &&
-        envelopeAStatus == CredentialStatus.interactionRequired &&
+        envelopeAStatus == CredentialStatus.userActionRequired &&
         pin.empty)
     {
         stderr.writeln(

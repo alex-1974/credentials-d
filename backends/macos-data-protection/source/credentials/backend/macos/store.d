@@ -58,8 +58,7 @@ final class MacOSDataProtectionCredentialStore : CredentialStore
             true,
             StoreProtection.operatingSystem,
             StoreUnlockModel.operatingSystem,
-            false,
-            StoreMobility.localDevice,
+                        StoreMobility.localDevice,
             true,
             StoreBlocking.mayBlock,
             StoreConcurrency.serialized
@@ -118,9 +117,9 @@ final class MacOSDataProtectionCredentialStore : CredentialStore
         {
             string locator;
             if (!generateSecureLocator(locator))
-                return CredentialStatus.backendFailure;
+                return CredentialStatus.storageFailure;
 
-            CredentialStatus status = CredentialStatus.backendFailure;
+            CredentialStatus status = CredentialStatus.storageFailure;
 
             secret.withBytes((scope const(ubyte)[] bytes) @safe
             {
@@ -133,13 +132,13 @@ final class MacOSDataProtectionCredentialStore : CredentialStore
                 return CredentialStatus.ok;
             }
 
-            if (status == CredentialStatus.ambiguous)
+            if (status == CredentialStatus.multipleMatches)
                 continue;
 
             return status;
         }
 
-        return CredentialStatus.backendFailure;
+        return CredentialStatus.storageFailure;
     }
 
     private CredentialStatus acquireImpl(
@@ -156,7 +155,7 @@ final class MacOSDataProtectionCredentialStore : CredentialStore
 
         auto query = buildBaseQuery(locator);
         if (query is null)
-            return CredentialStatus.backendFailure;
+            return CredentialStatus.storageFailure;
 
         scope(exit) CFRelease(query);
 
@@ -177,23 +176,23 @@ final class MacOSDataProtectionCredentialStore : CredentialStore
             return mapStatus(status);
 
         if (result is null)
-            return CredentialStatus.corruptData;
+            return CredentialStatus.corruptedData;
 
         scope(exit) CFRelease(result);
 
         if (CFGetTypeID(result) != CFDataGetTypeID())
-            return CredentialStatus.corruptData;
+            return CredentialStatus.corruptedData;
 
         const data = cast(CFDataRef) result;
         const length = CFDataGetLength(data);
 
         if (length < 0)
-            return CredentialStatus.corruptData;
+            return CredentialStatus.corruptedData;
 
         const(ubyte)* ptr = CFDataGetBytePtr(data);
 
         if (length != 0 && ptr is null)
-            return CredentialStatus.corruptData;
+            return CredentialStatus.corruptedData;
 
         const(ubyte)[] bytes;
         if (length != 0)
@@ -214,11 +213,11 @@ final class MacOSDataProtectionCredentialStore : CredentialStore
 
         auto query = buildBaseQuery(locator);
         if (query is null)
-            return CredentialStatus.backendFailure;
+            return CredentialStatus.storageFailure;
 
         scope(exit) CFRelease(query);
 
-        CredentialStatus status = CredentialStatus.backendFailure;
+        CredentialStatus status = CredentialStatus.storageFailure;
 
         replacement.withBytes((scope const(ubyte)[] bytes) @safe
         {
@@ -236,7 +235,7 @@ final class MacOSDataProtectionCredentialStore : CredentialStore
 
         auto query = buildBaseQuery(locator);
         if (query is null)
-            return CredentialStatus.backendFailure;
+            return CredentialStatus.storageFailure;
 
         scope(exit) CFRelease(query);
 
@@ -254,7 +253,7 @@ final class MacOSDataProtectionCredentialStore : CredentialStore
     {
         auto query = buildBaseQuery(locator);
         if (query is null)
-            return CredentialStatus.backendFailure;
+            return CredentialStatus.storageFailure;
 
         scope(exit) CFRelease(query);
 
@@ -266,7 +265,7 @@ final class MacOSDataProtectionCredentialStore : CredentialStore
 
         auto data = makeData(bytes);
         if (data is null)
-            return CredentialStatus.backendFailure;
+            return CredentialStatus.storageFailure;
 
         scope(exit) CFRelease(data);
 
@@ -282,13 +281,13 @@ final class MacOSDataProtectionCredentialStore : CredentialStore
     {
         auto updates = newDictionary();
         if (updates is null)
-            return CredentialStatus.backendFailure;
+            return CredentialStatus.storageFailure;
 
         scope(exit) CFRelease(updates);
 
         auto data = makeData(bytes);
         if (data is null)
-            return CredentialStatus.backendFailure;
+            return CredentialStatus.storageFailure;
 
         scope(exit) CFRelease(data);
 
@@ -436,14 +435,14 @@ final class MacOSDataProtectionCredentialStore : CredentialStore
                 return CredentialStatus.notFound;
 
             case errSecDuplicateItem:
-                return CredentialStatus.ambiguous;
+                return CredentialStatus.multipleMatches;
 
             case errSecInteractionNotAllowed:
             case errSecDataNotAvailable:
                 return CredentialStatus.locked;
 
             case errSecInteractionRequired:
-                return CredentialStatus.interactionRequired;
+                return CredentialStatus.userActionRequired;
 
             case errSecUserCanceled:
                 return CredentialStatus.userCancelled;
@@ -461,13 +460,13 @@ final class MacOSDataProtectionCredentialStore : CredentialStore
                 return CredentialStatus.tooLarge;
 
             case errSecDecode:
-                return CredentialStatus.corruptData;
+                return CredentialStatus.corruptedData;
 
             case errSecParam:
                 return CredentialStatus.invalidInput;
 
             default:
-                return CredentialStatus.backendFailure;
+                return CredentialStatus.storageFailure;
         }
     }
 }

@@ -12,13 +12,11 @@ import credentials :
     StoreMobility,
     StoreProtection,
     StoreUnlockModel;
-import credentials.backend.windows : WindowsCredentialStore;
+import credentials.windows : WindowsCredentialStore;
 
 private CredentialNamespace namespaceOf(string value)
 {
-    CredentialNamespace ns;
-    assert(CredentialNamespace.tryParse(value, ns));
-    return ns;
+    return CredentialNamespace(value);
 }
 
 void main()

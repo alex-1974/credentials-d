@@ -69,8 +69,7 @@ final class MemoryCredentialStore : CredentialStore
             false,
             StoreProtection.memoryOnly,
             StoreUnlockModel.none,
-            false,
-            StoreMobility.processOnly,
+                        StoreMobility.processOnly,
             true,
             StoreBlocking.nonBlocking,
             StoreConcurrency.threadConfined
@@ -85,7 +84,7 @@ final class MemoryCredentialStore : CredentialStore
         handle = CredentialHandle.init;
 
         if (nextId_ == 0)
-            return CredentialStatus.backendFailure;
+            return CredentialStatus.storageFailure;
 
         const serialized =
             storePrefix_ ~ format("%016x", nextId_);

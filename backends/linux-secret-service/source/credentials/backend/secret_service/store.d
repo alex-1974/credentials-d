@@ -48,7 +48,7 @@ final class LinuxSecretServiceStore : CredentialStore
     private string handlePrefix_;
     private SecretSchema* schema_;
     private SecretService* service_;
-    private CredentialStatus initStatus_ = CredentialStatus.backendFailure;
+    private CredentialStatus initStatus_ = CredentialStatus.storageFailure;
     private bool closed_;
 
     /**
@@ -65,7 +65,7 @@ final class LinuxSecretServiceStore : CredentialStore
         schema_ = createSchema();
         if (schema_ is null)
         {
-            initStatus_ = CredentialStatus.backendFailure;
+            initStatus_ = CredentialStatus.storageFailure;
             return;
         }
 
@@ -129,7 +129,6 @@ final class LinuxSecretServiceStore : CredentialStore
             true,
             StoreProtection.operatingSystem,
             StoreUnlockModel.operatingSystem,
-            false,
             // Secret Service does not promise that provider storage can never
             // roam/synchronize. Do not claim local-device-only protection.
             StoreMobility.mayRoam,
@@ -211,7 +210,7 @@ final class LinuxSecretServiceStore : CredentialStore
         {
             string locator;
             if (!generateSecureLocator(locator))
-                return CredentialStatus.backendFailure;
+                return CredentialStatus.storageFailure;
 
             SecretItem* existing;
             const probeStatus = findExact(
@@ -226,7 +225,7 @@ final class LinuxSecretServiceStore : CredentialStore
                 continue;
             }
 
-            if (probeStatus == CredentialStatus.ambiguous)
+            if (probeStatus == CredentialStatus.multipleMatches)
                 return probeStatus;
 
             if (probeStatus != CredentialStatus.notFound)
@@ -240,7 +239,7 @@ final class LinuxSecretServiceStore : CredentialStore
             return CredentialStatus.ok;
         }
 
-        return CredentialStatus.backendFailure;
+        return CredentialStatus.storageFailure;
     }
 
     private CredentialStatus acquireImpl(
@@ -283,7 +282,7 @@ final class LinuxSecretServiceStore : CredentialStore
             if (!secret_item_load_secret_sync(item, null, &error))
                 return consumeError(
                     error,
-                    CredentialStatus.backendFailure
+                    CredentialStatus.storageFailure
                 );
 
             if (error !is null)
@@ -294,7 +293,7 @@ final class LinuxSecretServiceStore : CredentialStore
 
             value = secret_item_get_secret(item);
             if (value is null)
-                return CredentialStatus.corruptData;
+                return CredentialStatus.corruptedData;
         }
 
         scope(exit) secret_value_unref(value);
@@ -303,7 +302,7 @@ final class LinuxSecretServiceStore : CredentialStore
         const(char)* data = secret_value_get(value, &length);
 
         if (length != 0 && data is null)
-            return CredentialStatus.corruptData;
+            return CredentialStatus.corruptedData;
 
         const(ubyte)[] bytes;
         if (length != 0)
@@ -345,7 +344,7 @@ final class LinuxSecretServiceStore : CredentialStore
 
         SecretValue* value = makeSecretValue(replacement);
         if (value is null)
-            return CredentialStatus.backendFailure;
+            return CredentialStatus.storageFailure;
 
         scope(exit) secret_value_unref(value);
 
@@ -353,7 +352,7 @@ final class LinuxSecretServiceStore : CredentialStore
         if (!secret_item_set_secret_sync(item, value, null, &error))
             return consumeError(
                 error,
-                CredentialStatus.backendFailure
+                CredentialStatus.storageFailure
             );
 
         if (error !is null)
@@ -390,7 +389,7 @@ final class LinuxSecretServiceStore : CredentialStore
         if (!secret_item_delete_sync(item, null, &error))
             return consumeError(
                 error,
-                CredentialStatus.backendFailure
+                CredentialStatus.storageFailure
             );
 
         if (error !is null)
@@ -406,13 +405,13 @@ final class LinuxSecretServiceStore : CredentialStore
     {
         GHashTable* attributes = buildAttributes(locator);
         if (attributes is null)
-            return CredentialStatus.backendFailure;
+            return CredentialStatus.storageFailure;
 
         scope(exit) g_hash_table_unref(attributes);
 
         SecretValue* value = makeSecretValue(secret);
         if (value is null)
-            return CredentialStatus.backendFailure;
+            return CredentialStatus.storageFailure;
 
         scope(exit) secret_value_unref(value);
 
@@ -431,7 +430,7 @@ final class LinuxSecretServiceStore : CredentialStore
         if (!stored)
             return consumeError(
                 error,
-                CredentialStatus.backendFailure
+                CredentialStatus.storageFailure
             );
 
         if (error !is null)
@@ -459,7 +458,7 @@ final class LinuxSecretServiceStore : CredentialStore
 
         GHashTable* attributes = buildAttributes(locator);
         if (attributes is null)
-            return CredentialStatus.backendFailure;
+            return CredentialStatus.storageFailure;
 
         scope(exit) g_hash_table_unref(attributes);
 
@@ -480,7 +479,7 @@ final class LinuxSecretServiceStore : CredentialStore
 
             return consumeError(
                 error,
-                CredentialStatus.backendFailure
+                CredentialStatus.storageFailure
             );
         }
 
@@ -497,21 +496,21 @@ final class LinuxSecretServiceStore : CredentialStore
         if (count != 1)
         {
             freeItemList(items);
-            return CredentialStatus.ambiguous;
+            return CredentialStatus.multipleMatches;
         }
 
         auto raw = g_list_nth_data(items, 0);
         if (raw is null)
         {
             freeItemList(items);
-            return CredentialStatus.corruptData;
+            return CredentialStatus.corruptedData;
         }
 
         item = cast(SecretItem*) g_object_ref(raw);
         freeItemList(items);
 
         return item is null
-            ? CredentialStatus.backendFailure
+            ? CredentialStatus.storageFailure
             : CredentialStatus.ok;
     }
 
@@ -691,7 +690,7 @@ final class LinuxSecretServiceStore : CredentialStore
             SECRET_ERROR_ALREADY_EXISTS
         ))
         {
-            status = CredentialStatus.ambiguous;
+            status = CredentialStatus.multipleMatches;
         }
         else if (g_error_matches(
             error,

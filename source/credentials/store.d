@@ -19,17 +19,17 @@ enum CredentialStatus
     ok,
     notFound,
     locked,
-    interactionRequired,
+    userActionRequired,
     userCancelled,
     unavailable,
     permissionDenied,
     unsupported,
     tooLarge,
-    ambiguous,
-    corruptData,
-    commitUncertain,
+    multipleMatches,
+    corruptedData,
+    writeOutcomeUnknown,
     invalidInput,
-    backendFailure
+    storageFailure
 }
 
 /**
@@ -95,7 +95,6 @@ struct StoreCapabilities
     bool persistent;
     StoreProtection protection;
     StoreUnlockModel unlockModel;
-    bool supportsUserPresence;
     StoreMobility mobility;
     bool confirmsLogicalDeletion;
     StoreBlocking blocking;

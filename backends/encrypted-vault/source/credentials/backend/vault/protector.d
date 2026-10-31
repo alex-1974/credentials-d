@@ -210,7 +210,7 @@ CredentialStatus createVaultUnlockMethod(
 {
     ubyte[protectorSaltBytes] salt;
     if (!secureRandomBytes(salt[]))
-        return CredentialStatus.backendFailure;
+        return CredentialStatus.storageFailure;
 
     return createVaultUnlockMethodWithSalt(
         ns,
@@ -253,7 +253,7 @@ package(credentials.backend) CredentialStatus createVaultUnlockMethodWithSalt(
     ubyte[xNonceBytes] nonce;
 
     if (!secureRandomBytes(nonce[]))
-        return CredentialStatus.backendFailure;
+        return CredentialStatus.storageFailure;
 
     auto bindingCopy = protectorBinding.dup;
     auto ad = buildEnvelopeAd(
@@ -265,7 +265,7 @@ package(credentials.backend) CredentialStatus createVaultUnlockMethodWithSalt(
     );
 
     ubyte[wrappedVaultKeyBytes] wrapped;
-    CredentialStatus cryptoStatus = CredentialStatus.backendFailure;
+    CredentialStatus cryptoStatus = CredentialStatus.storageFailure;
     size_t visitorCalls;
 
     const sourceStatus = keySource(
@@ -276,7 +276,7 @@ package(credentials.backend) CredentialStatus createVaultUnlockMethodWithSalt(
 
             if (visitorCalls != 1)
             {
-                cryptoStatus = CredentialStatus.backendFailure;
+                cryptoStatus = CredentialStatus.storageFailure;
                 return;
             }
 
@@ -300,7 +300,7 @@ package(credentials.backend) CredentialStatus createVaultUnlockMethodWithSalt(
                 wrapped
             )
                 ? CredentialStatus.ok
-                : CredentialStatus.backendFailure;
+                : CredentialStatus.storageFailure;
         }
     );
 
@@ -308,7 +308,7 @@ package(credentials.backend) CredentialStatus createVaultUnlockMethodWithSalt(
         return sourceStatus;
 
     if (visitorCalls != 1)
-        return CredentialStatus.backendFailure;
+        return CredentialStatus.storageFailure;
 
     if (cryptoStatus != CredentialStatus.ok)
         return cryptoStatus;
@@ -358,7 +358,7 @@ CredentialStatus recoverVaultKeyFromEnvelope(
     ubyte[vaultKeyBytes] vaultKey;
     scope(exit) zeroFixed(vaultKey);
 
-    CredentialStatus cryptoStatus = CredentialStatus.backendFailure;
+    CredentialStatus cryptoStatus = CredentialStatus.storageFailure;
     size_t visitorCalls;
 
     const sourceStatus = keySource(
@@ -369,7 +369,7 @@ CredentialStatus recoverVaultKeyFromEnvelope(
 
             if (visitorCalls != 1)
             {
-                cryptoStatus = CredentialStatus.backendFailure;
+                cryptoStatus = CredentialStatus.storageFailure;
                 return;
             }
 
@@ -401,7 +401,7 @@ CredentialStatus recoverVaultKeyFromEnvelope(
         return sourceStatus;
 
     if (visitorCalls != 1)
-        return CredentialStatus.backendFailure;
+        return CredentialStatus.storageFailure;
 
     if (cryptoStatus != CredentialStatus.ok)
         return cryptoStatus;

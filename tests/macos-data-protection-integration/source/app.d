@@ -12,22 +12,19 @@ import credentials :
     StoreMobility,
     StoreProtection,
     StoreUnlockModel;
-import credentials.backend.macos :
-    MacOSDataProtectionCredentialStore;
+import credentials.macos : MacOSCredentialStore;
 import std.stdio : writeln;
 import std.process : environment;
 
 private CredentialNamespace namespaceOf(string value)
 {
-    CredentialNamespace ns;
-    assert(CredentialNamespace.tryParse(value, ns));
-    return ns;
+    return CredentialNamespace(value);
 }
 
 void main()
 {
     auto ns = namespaceOf("org.alex1974.credentials-integration");
-    auto store = new MacOSDataProtectionCredentialStore(ns);
+    auto store = new MacOSCredentialStore(ns);
 
     const capabilities = store.capabilities;
     assert(capabilities.persistent);
@@ -106,7 +103,7 @@ void main()
     }) == CredentialStatus.ok);
     assert(acquired);
 
-    auto reopened = new MacOSDataProtectionCredentialStore(ns);
+    auto reopened = new MacOSCredentialStore(ns);
     assert(reopened.withSecret(handle, (scope const(ubyte)[] bytes) @safe
     {
         assert(bytes == firstBytes);
@@ -129,7 +126,7 @@ void main()
 
     auto otherNs = namespaceOf("org.alex1974.credentials-other");
     auto otherStore =
-        new MacOSDataProtectionCredentialStore(otherNs);
+        new MacOSCredentialStore(otherNs);
 
     bool wrongNamespaceCalled;
     assert(otherStore.withSecret(

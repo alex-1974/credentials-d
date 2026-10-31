@@ -80,8 +80,7 @@ import credentials :
     MemoryCredentialStore,
     SecretBuffer;
 
-CredentialNamespace ns;
-assert(CredentialNamespace.tryParse("org.example.application", ns));
+auto ns = CredentialNamespace("org.example.application");
 
 auto store = new MemoryCredentialStore(ns);
 auto secret = SecretBuffer(cast(const(ubyte)[]) "token");
@@ -131,12 +130,10 @@ and create:
 
 ```d
 import credentials : CredentialNamespace;
-import credentials.backend.secret_service : LinuxSecretServiceStore;
+import credentials.linux : LinuxCredentialStore;
 
-CredentialNamespace ns;
-assert(CredentialNamespace.tryParse("org.example.application", ns));
-
-auto store = new LinuxSecretServiceStore(ns);
+auto ns = CredentialNamespace("org.example.application");
+auto store = new LinuxCredentialStore(ns);
 ```
 
 The backend uses libsecret with one retained Secret Service session, binary
@@ -159,13 +156,10 @@ and create:
 
 ```d
 import credentials : CredentialNamespace;
-import credentials.backend.macos :
-    MacOSDataProtectionCredentialStore;
+import credentials.macos : MacOSCredentialStore;
 
-CredentialNamespace ns;
-assert(CredentialNamespace.tryParse("org.example.application", ns));
-
-auto store = new MacOSDataProtectionCredentialStore(ns);
+auto ns = CredentialNamespace("org.example.application");
+auto store = new MacOSCredentialStore(ns);
 ```
 
 Every operation explicitly targets the Data Protection Keychain, disables
@@ -191,11 +185,9 @@ and create:
 
 ```d
 import credentials : CredentialNamespace;
-import credentials.backend.windows : WindowsCredentialStore;
+import credentials.windows : WindowsCredentialStore;
 
-CredentialNamespace ns;
-assert(CredentialNamespace.tryParse("org.example.application", ns));
-
+auto ns = CredentialNamespace("org.example.application");
 auto store = new WindowsCredentialStore(ns);
 ```
 
