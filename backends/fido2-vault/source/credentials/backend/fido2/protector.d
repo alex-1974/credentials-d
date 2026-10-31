@@ -6,6 +6,10 @@ module credentials.backend.fido2.protector;
 import core.exception : onOutOfMemoryError;
 import core.stdc.stdlib : free, malloc;
 import core.volatile : volatileStore;
+version (Posix)
+{
+    import core.sys.posix.dlfcn : RTLD_LAZY, dlclose, dlopen, dlsym;
+}
 import credentials.backend.fido2.binding :
     Fido2VaultBinding,
     Fido2VerificationPolicy,
@@ -67,6 +71,7 @@ struct Fido2Capabilities
 {
     bool hmacSecret;
     bool hmacSecretMakeCredential;
+    bool hmacSecretMakeCredentialUsable;
     bool credProtect;
 
     bool clientPinSupported;
@@ -151,6 +156,9 @@ CredentialStatus queryFido2Capabilities(
             fido_cbor_info_extensions_len(info),
             "hmac-secret-mc"
         );
+    capabilities.hmacSecretMakeCredentialUsable =
+        capabilities.hmacSecretMakeCredential &&
+        hmacSecretMcAbiAvailable();
     capabilities.credProtect =
         hasCborString(
             fido_cbor_info_extensions_ptr(info),
@@ -810,7 +818,7 @@ version (linux)
 
         return status == CredentialStatus.ok &&
             capabilities.hmacSecret &&
-            capabilities.hmacSecretMakeCredential;
+            capabilities.hmacSecretMakeCredentialUsable;
     }
 
     private CredentialStatus addFido2VaultUnlockMakeCredentialImpl(
@@ -1038,7 +1046,7 @@ private CredentialStatus enrollImpl(
     if (useMakeCredentialSecret)
     {
         extensions |= FIDO_EXT_HMAC_SECRET_MC;
-        rc = fido_cred_set_hmac_salt(
+        rc = setCredentialHmacSalt(
             cred,
             makeCredentialSalt.ptr,
             makeCredentialSalt.length
@@ -1077,8 +1085,8 @@ private CredentialStatus enrollImpl(
                 break;
         }
 
-        const secretLength = fido_cred_hmac_secret_len(cred);
-        const secret = fido_cred_hmac_secret_ptr(cred);
+        const secretLength = credentialHmacSecretLength(cred);
+        const secret = credentialHmacSecretPointer(cred);
 
         if (secret is null || secretLength != 32)
             return CredentialStatus.unsupported;
@@ -1245,6 +1253,97 @@ private CredentialStatus deriveImpl(
 
     visitor(secret[0 .. secretLength]);
     return CredentialStatus.ok;
+}
+
+private alias FidoCredSetHmacSaltFn =
+    extern(C) int function(
+        fido_cred_t*,
+        const(ubyte)*,
+        size_t
+    ) @nogc nothrow;
+private alias FidoCredHmacSecretPtrFn =
+    extern(C) const(ubyte)* function(
+        const(fido_cred_t)*
+    ) @nogc nothrow;
+private alias FidoCredHmacSecretLenFn =
+    extern(C) size_t function(
+        const(fido_cred_t)*
+    ) @nogc nothrow;
+
+private struct HmacSecretMcAbi
+{
+    FidoCredSetHmacSaltFn setSalt;
+    FidoCredHmacSecretPtrFn secretPtr;
+    FidoCredHmacSecretLenFn secretLen;
+
+    @property bool available() const
+        @nogc nothrow @safe
+    {
+        return setSalt !is null &&
+            secretPtr !is null &&
+            secretLen !is null;
+    }
+}
+
+private HmacSecretMcAbi resolveHmacSecretMcAbi() @trusted
+{
+    HmacSecretMcAbi abi;
+
+    version (Posix)
+    {
+        auto handle = dlopen(null, RTLD_LAZY);
+        if (handle is null)
+            return abi;
+
+        scope(exit) dlclose(handle);
+
+        abi.setSalt = cast(FidoCredSetHmacSaltFn)
+            dlsym(handle, "fido_cred_set_hmac_salt".ptr);
+        abi.secretPtr = cast(FidoCredHmacSecretPtrFn)
+            dlsym(handle, "fido_cred_hmac_secret_ptr".ptr);
+        abi.secretLen = cast(FidoCredHmacSecretLenFn)
+            dlsym(handle, "fido_cred_hmac_secret_len".ptr);
+    }
+
+    return abi;
+}
+
+private bool hmacSecretMcAbiAvailable() @trusted
+{
+    return resolveHmacSecretMcAbi().available;
+}
+
+private int setCredentialHmacSalt(
+    fido_cred_t* cred,
+    const(ubyte)* salt,
+    size_t length
+) @trusted
+{
+    const abi = resolveHmacSecretMcAbi();
+    if (!abi.available)
+        return FIDO_ERR_UNSUPPORTED_EXTENSION;
+
+    return abi.setSalt(cred, salt, length);
+}
+
+private const(ubyte)* credentialHmacSecretPointer(
+    const fido_cred_t* cred
+) @trusted
+{
+    const abi = resolveHmacSecretMcAbi();
+    return abi.available
+        ? abi.secretPtr(cred)
+        : null;
+}
+
+private size_t credentialHmacSecretLength(
+    const fido_cred_t* cred
+) @trusted
+{
+    const abi = resolveHmacSecretMcAbi();
+    return abi.available
+        ? abi.secretLen(cred)
+        : 0;
 }
 
 private bool hasCborString(
