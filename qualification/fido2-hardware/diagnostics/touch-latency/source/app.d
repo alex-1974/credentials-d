@@ -121,22 +121,21 @@ private char* readHiddenPin()
     if (restoreResult != 0)
         throw new Exception("unable to restore terminal settings");
 
-    while (line.length != 0 && (line[$ - 1] == '\n' || line[$ - 1] == '\r'))
-        line.length -= 1;
+    size_t length = line.length;
+    while (length != 0 &&
+           (line[length - 1] == '\n' || line[length - 1] == '\r'))
+        --length;
 
-    if (line.length == 0)
+    if (length == 0)
         throw new Exception("PIN must not be empty");
 
-    auto pin = cast(char*)malloc(line.length + 1);
+    auto pin = cast(char*)malloc(length + 1);
     if (pin is null)
         throw new Exception("unable to allocate PIN buffer");
 
-    foreach (i, value; line)
-        pin[i] = value;
-    pin[line.length] = '\0';
-
-    foreach (i; 0 .. line.length)
-        line[i] = '\0';
+    foreach (i; 0 .. length)
+        pin[i] = line[i];
+    pin[length] = '\0';
 
     return pin;
 }
