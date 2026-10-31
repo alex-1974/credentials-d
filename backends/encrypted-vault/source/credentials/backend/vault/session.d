@@ -17,7 +17,7 @@ alias VaultKeyVisitor =
  * SecretBuffer's non-GC allocation and are explicitly cleared by lock().
  *
  * Because this object is GC-managed, consumers must not rely on class
- * finalization for prompt key destruction. EncryptedVaultCredentialStore
+ * finalization for prompt key destruction. EncryptedCredentialVault
  * exposes explicit lock() and calls it from its own best-effort destructor.
  */
 final class VaultSession
