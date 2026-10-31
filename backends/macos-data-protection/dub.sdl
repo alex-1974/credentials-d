@@ -1,0 +1,16 @@
+name "macos-data-protection"
+description "macOS Data Protection Keychain backend for credentials-d"
+authors "Alexander Bernardi"
+copyright "Copyright © 2026 Alexander Bernardi"
+license "MIT"
+
+targetType "library"
+sourcePaths "source"
+
+dependency "credentials-d" path="../.."
+
+lflags "-framework" "Security" "-framework" "CoreFoundation" platform="osx"
+toolchainRequirements frontend=">=2.111.0"
+
+// Keep generated API docs focused on the supported consumer surface.
+x:ddoxFilterArgs "--unittest-examples" "--min-protection" "Public" "--ex" "credentials.backend."

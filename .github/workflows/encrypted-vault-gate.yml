@@ -1,0 +1,109 @@
+name: Encrypted Vault Gate
+
+on:
+  pull_request:
+    branches:
+      - develop
+      - main
+  push:
+    branches:
+      - develop
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  vault-core:
+    name: Vault Core / ${{ matrix.compiler }}
+    runs-on: ubuntu-24.04
+
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler:
+          - dmd-2.111.0
+          - ldc-1.41.0
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Install libsodium development package
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libsodium-dev
+          dpkg-query -W -f='${Version}\n' libsodium23
+
+      - name: Install D compiler
+        uses: dlang-community/setup-dlang@v2
+        with:
+          compiler: ${{ matrix.compiler }}
+
+      - name: Compiler and libsodium versions
+        shell: bash
+        run: |
+          "$DC" --version
+          dub --version
+          pkg-config --modversion libsodium
+
+      - name: Encrypted-vault subpackage tests
+        shell: bash
+        run: |
+          dub test \
+            --root=backends/encrypted-vault \
+            --compiler="$DC" \
+            --force
+
+      - name: Encrypted-vault subpackage tests with DIP1000
+        shell: bash
+        run: |
+          DFLAGS="-unittest -preview=dip1000" \
+            dub test \
+              --root=backends/encrypted-vault \
+              --compiler="$DC" \
+              --force
+
+      - name: Vault header fuzz target builds
+        shell: bash
+        run: |
+          dub build \
+            --root=tests/encrypted-vault-fuzz \
+            --compiler="$DC" \
+            --force
+
+      - name: POSIX encrypted-vault integration
+        shell: bash
+        run: |
+          dub run \
+            --root=tests/encrypted-vault-posix-integration \
+            --compiler="$DC" \
+            --force
+
+      - name: Encrypted-vault consumer example
+        shell: bash
+        run: |
+          dub build \
+            --root=examples/encrypted-vault \
+            --compiler="$DC" \
+            --force
+
+      - name: POSIX encrypted-vault integration with DIP1000
+        shell: bash
+        run: |
+          DFLAGS="-preview=dip1000" \
+            dub run \
+              --root=tests/encrypted-vault-posix-integration \
+              --compiler="$DC" \
+              --force
+
+      - name: Encrypted-vault release build
+        shell: bash
+        run: |
+          dub build \
+            --root=backends/encrypted-vault \
+            --build=release \
+            --compiler="$DC" \
+            --force

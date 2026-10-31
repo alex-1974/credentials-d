@@ -1,0 +1,8 @@
+name "credentials-d-example-encrypted-vault"
+description "Encrypted credentials-d vault consumer example"
+license "MIT"
+
+targetType "executable"
+sourcePaths "source"
+
+dependency "credentials-d:encrypted-vault" path="../.."

@@ -1,0 +1,8 @@
+name "credentials-d-store-contract"
+description "Shared CredentialStore contract qualification"
+license "MIT"
+
+targetType "executable"
+sourcePaths "source"
+
+dependency "credentials-d" path="../.."

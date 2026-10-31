@@ -1,0 +1,95 @@
+name: Release Gate
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  compiler-matrix:
+    name: Release / ${{ matrix.os }} / ${{ matrix.compiler }}
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-24.04
+        compiler:
+          - dmd-2.111.0
+          - dmd-2.112.1
+          - dmd-2.113.0
+          - ldc-1.41.0
+          - ldc-1.42.0
+          - ldc-1.43.0
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Install D compiler
+        uses: dlang-community/setup-dlang@v2
+        with:
+          compiler: ${{ matrix.compiler }}
+
+      - name: Unit tests
+        shell: bash
+        run: dub test --compiler="$DC" --force
+
+      - name: External consumer smoke
+        shell: bash
+        run: dub run --root=tests/consumer --compiler="$DC" --force
+
+      - name: Public API example smoke
+        shell: bash
+        run: dub run --root=examples/basic-store --compiler="$DC" --force
+
+      - name: CredentialStore contract
+        shell: bash
+        run: dub run --root=tests/store-contract --compiler="$DC" --force
+
+      - name: SecretBuffer negative compile contracts
+        shell: bash
+        run: |
+          if dub build \
+              --root=tests/compile-negative/secret-implicit-string \
+              --compiler="$DC" \
+              --force; then
+            echo "Expected implicit SecretBuffer -> string conversion to fail."
+            false
+          fi
+
+          if DFLAGS="-preview=dip1000" dub build \
+              --root=tests/compile-negative/secret-scope-escape \
+              --compiler="$DC" \
+              --force; then
+            echo "Expected scoped secret plaintext escape to fail under DIP1000."
+            false
+          fi
+
+          if dub build \
+              --root=tests/compile-negative/secret-copy \
+              --compiler="$DC" \
+              --force; then
+            echo "Expected SecretBuffer copy to fail."
+            false
+          fi
+
+          if dub build \
+              --root=tests/compile-negative/secret-format \
+              --compiler="$DC" \
+              --force; then
+            echo "Expected SecretBuffer formatting to fail."
+            false
+          fi
+
+      - name: Release build
+        shell: bash
+        run: dub build --build=release --compiler="$DC" --force

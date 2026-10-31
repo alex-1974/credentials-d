@@ -1,0 +1,16 @@
+name "windows"
+description "Windows Credential Manager backend for credentials-d"
+authors "Alexander Bernardi"
+copyright "Copyright © 2026 Alexander Bernardi"
+license "MIT"
+
+targetType "library"
+sourcePaths "source"
+
+dependency "credentials-d" path="../.."
+
+libs "Advapi32" platform="windows"
+toolchainRequirements frontend=">=2.111.0"
+
+// Keep generated API docs focused on the supported consumer surface.
+x:ddoxFilterArgs "--unittest-examples" "--min-protection" "Public" "--ex" "credentials.backend."

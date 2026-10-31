@@ -1,0 +1,14 @@
+name "encrypted-vault"
+description "Encrypted credential vault backend for credentials-d"
+targetType "library"
+
+sourcePaths "source"
+
+dependency "credentials-d" path="../.."
+
+libs "sodium"
+
+toolchainRequirements frontend=">=2.111.0"
+
+// Keep generated API docs focused on the supported consumer surface.
+x:ddoxFilterArgs "--unittest-examples" "--min-protection" "Public" "--ex" "credentials.backend."

@@ -1,0 +1,100 @@
+name: FIDO2 Vault Gate
+
+on:
+  pull_request:
+    branches:
+      - develop
+      - main
+  push:
+    branches:
+      - develop
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fido2-vault:
+    name: FIDO2 Vault / ${{ matrix.compiler }}
+    runs-on: ubuntu-24.04
+
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler:
+          - dmd-2.111.0
+          - ldc-1.41.0
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Install native dependencies
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libfido2-dev libsodium-dev
+          pkg-config --modversion libfido2
+          pkg-config --modversion libsodium
+
+      - name: Install D compiler
+        uses: dlang-community/setup-dlang@v2
+        with:
+          compiler: ${{ matrix.compiler }}
+
+      - name: Compiler versions
+        shell: bash
+        run: |
+          "$DC" --version
+          dub --version
+
+      - name: FIDO2 vault subpackage tests
+        shell: bash
+        run: |
+          dub test \
+            --root=backends/fido2-vault \
+            --compiler="$DC" \
+            --force
+
+      - name: FIDO2 vault subpackage tests with DIP1000
+        shell: bash
+        run: |
+          DFLAGS="-unittest -preview=dip1000" \
+            dub test \
+              --root=backends/fido2-vault \
+              --compiler="$DC" \
+              --force
+
+      - name: libfido2 discovery ABI without hardware
+        shell: bash
+        run: |
+          dub run \
+            --root=tests/fido2-no-hardware \
+            --compiler="$DC" \
+            --force
+
+      - name: Security-key consumer example
+        shell: bash
+        run: |
+          dub build \
+            --root=examples/security-key-vault \
+            --compiler="$DC" \
+            --force
+
+      - name: Physical-authenticator qualification harness builds
+        shell: bash
+        run: |
+          dub build \
+            --root=qualification/fido2-hardware \
+            --compiler="$DC" \
+            --force
+
+      - name: FIDO2 vault release build
+        shell: bash
+        run: |
+          dub build \
+            --root=backends/fido2-vault \
+            --build=release \
+            --compiler="$DC" \
+            --force

@@ -1,0 +1,8 @@
+name "credentials-d-negative-secret-copy"
+description "SecretBuffer must not be copyable"
+license "MIT"
+
+targetType "executable"
+sourcePaths "source"
+
+dependency "credentials-d" path="../../.."

@@ -1,0 +1,8 @@
+name "credentials-d-negative-secret-format"
+description "SecretBuffer must not be format/log friendly"
+license "MIT"
+
+targetType "executable"
+sourcePaths "source"
+
+dependency "credentials-d" path="../../.."
