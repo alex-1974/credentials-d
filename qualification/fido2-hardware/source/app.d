@@ -9,7 +9,8 @@ import credentials :
     CredentialHandle,
     CredentialNamespace,
     CredentialStatus,
-    SecretBuffer;
+    SecretBuffer,
+    SecretVisitor;
 import credentials.backend.fido2 :
     Fido2DeviceInfo,
     Fido2VaultBinding,
@@ -449,7 +450,7 @@ private CredentialStatus addEnvelope(
 
     VaultWrappingKeySource source =
         (scope const ubyte[protectorSaltBytes] salt,
-         scope void delegate(scope const(ubyte)[]) @safe visitor) @safe
+         scope SecretVisitor visitor) @safe
         {
             ubyte[32] output;
             scope(exit) wipe(output[]);
