@@ -2,10 +2,16 @@ module app;
 
 import credentials : CredentialStatus;
 import credentials.security_key :
+    SecurityKeyAccess,
     SecurityKeyCapabilities,
     SecurityKeyInfo,
+    addSecurityKeyUnlock,
     findSecurityKeys,
-    getSecurityKeyCapabilities;
+    getSecurityKeyCapabilities,
+    unlockWithSecurityKey;
+import credentials.vault :
+    EncryptedCredentialVault,
+    VaultUnlockMethod;
 
 void main()
 {
