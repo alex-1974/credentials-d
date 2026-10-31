@@ -26,6 +26,15 @@ The site is generated from the public API on `main` and includes separate
 documentation for the core library, platform stores, encrypted vault and
 security-key support.
 
+## Documentation
+
+The generated consumer API documentation is published at:
+
+https://alex-1974.github.io/credentials-d/
+
+It contains the supported public modules and examples. Implementation modules
+under `credentials.backend.*` are intentionally excluded.
+
 ## Quick start
 
 Every store belongs to an application namespace. Use one stable namespace for

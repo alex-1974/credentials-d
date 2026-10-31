@@ -4,6 +4,9 @@ All notable changes to this project will be documented here.
 
 ## Unreleased
 
+- Publish the generated consumer DDOX documentation through GitHub Pages and
+  use the Pages site as the package homepage.
+
 - Publish consumer-facing Ddoc/DDOX documentation through GitHub Pages, with
   separate API sections for core, Linux, Windows, macOS, encrypted vault and
   security-key support.
