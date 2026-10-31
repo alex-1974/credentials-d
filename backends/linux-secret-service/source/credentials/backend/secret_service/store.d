@@ -157,7 +157,7 @@ final class LinuxSecretServiceStore : CredentialStore
     {
         synchronized (this)
         {
-            return acquireImpl(handle, visitor);
+            return acquireImpl(handle, callback);
         }
     }
 
