@@ -95,11 +95,10 @@ jobs:
         shell: bash
         run: |
           rm -rf backends/fido2-vault/docs
-          dub build \
-            --root=backends/fido2-vault \
-            --build=ddox \
-            --compiler="$DC" \
-            --force
+          (
+            cd backends/fido2-vault
+            dub build --build=ddox --compiler="$DC" --force
+          )
 
       - name: FIDO2 vault release build
         shell: bash
