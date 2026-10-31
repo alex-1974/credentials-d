@@ -120,7 +120,7 @@ CredentialStatus getSecurityKeyCapabilities(
     capabilities.supportsBuiltInVerification =
         native.builtInUserVerificationSupported;
     capabilities.builtInVerificationConfigured =
-        native.builtInVerificationConfigured;
+        native.builtInUserVerificationConfigured;
 
     return CredentialStatus.ok;
 }
