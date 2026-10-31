@@ -29,7 +29,7 @@ DC=dmd ./run.sh --discover-only
 ```
 
 Discovery prints runtime device paths so an operator can select a device. The
-path is not persisted inside `Fido2VaultBinding`, `VaultUnlockEnvelope`, or
+path is not persisted inside `Fido2VaultBinding`, `VaultUnlockMethod`, or
 the qualification PASS receipt fields.
 
 Discovery also prints standard CTAP capabilities for each authenticator:
@@ -71,10 +71,10 @@ That PIN is only for credential creation; the subsequent user-presence
 hmac-secret derivations remain PIN-less and must return an assertion without
 the UV flag.
 
-The public API exposes the same lifecycle explicitly through
-`addFido2TouchVaultUnlockWithEnrollmentPin()` for one-time setup and
-`unlockVaultWithFido2Touch()` for normal use. The latter accepts no PIN and
-therefore represents a strict authenticator-touch-only unlock path.
+The public API exposes the same lifecycle through
+`addSecurityKeyUnlock()` and `unlockWithSecurityKey()` with
+`SecurityKeyAccess.touch`. The PIN overload is used only when setup requires
+PIN authorization; normal touch-only unlock remains PIN-less.
 
 YubiKeys with firmware before 5.3.0 also require a UserEntity name even though
 CTAP makes it optional in this privacy-preserving UP-only case. The library
