@@ -400,9 +400,9 @@ Consumer code should import:
 Modules under `credentials.backend.*` are implementation modules and are not
 part of the public compatibility contract.
 
-## Current status
+## Release status
 
-The API is a pre-`v0.1.0` freeze candidate.
+`v0.1.0` is the first public API release.
 
 Linux, Windows, encrypted-vault and the tested security-key workflows have
 qualification coverage. The macOS backend still needs final qualification in a
