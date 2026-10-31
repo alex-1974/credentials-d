@@ -84,7 +84,7 @@ final class MacOSDataProtectionCredentialStore : CredentialStore
     {
         synchronized (this)
         {
-            return acquireImpl(handle, visitor);
+            return acquireImpl(handle, callback);
         }
     }
 
