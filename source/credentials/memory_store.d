@@ -98,10 +98,10 @@ final class MemoryCredentialStore : CredentialStore
 
     override CredentialStatus withSecret(
         CredentialHandle handle,
-        scope SecretCallback visitor
+        scope SecretCallback callback
     ) @safe
     {
-        if (!handle.valid || visitor is null)
+        if (!handle.valid || callback is null)
             return CredentialStatus.invalidInput;
 
         if (!handle.hasStorePrefix(storePrefix_))
@@ -111,7 +111,7 @@ final class MemoryCredentialStore : CredentialStore
         if (record is null)
             return CredentialStatus.notFound;
 
-        visitor(*record);
+        callback(*record);
         return CredentialStatus.ok;
     }
 
