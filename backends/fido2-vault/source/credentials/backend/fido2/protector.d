@@ -177,7 +177,7 @@ CredentialStatus queryFido2Capabilities(
         fido_cbor_info_algorithm_count(info);
     foreach (i; 0 .. algorithmCount)
     {
-        final switch (fido_cbor_info_algorithm_cose(info, i))
+        switch (fido_cbor_info_algorithm_cose(info, i))
         {
             case COSE_ES256:
                 capabilities.es256 = true;
