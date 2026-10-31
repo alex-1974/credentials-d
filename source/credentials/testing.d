@@ -63,7 +63,7 @@ final class MockCredentialStore : CredentialStore
 
     override CredentialStatus withSecret(
         CredentialHandle handle,
-        scope SecretCallback visitor
+        scope SecretCallback callback
     ) @safe
     {
         if (forcedWithSecretStatus != CredentialStatus.ok)
