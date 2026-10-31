@@ -498,7 +498,7 @@ private CredentialStatus addEnvelope(
         );
 
     if (capabilityStatus == CredentialStatus.ok &&
-        capabilities.hmacSecretMakeCredential)
+        capabilities.hmacSecretMakeCredentialUsable)
     {
         report(label, "_enrollment_path=hmac-secret-mc");
         promptTouch(
@@ -647,6 +647,11 @@ private void printCapabilities(
         label,
         "_hmac_secret_make_credential=",
         capabilities.hmacSecretMakeCredential
+    );
+    report(
+        label,
+        "_hmac_secret_make_credential_usable=",
+        capabilities.hmacSecretMakeCredentialUsable
     );
     report(label, "_cred_protect=", capabilities.credProtect);
     report(
