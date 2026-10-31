@@ -395,7 +395,7 @@ void main()
         oversizedPath,
         ns,
         oversizedStore
-    ) == CredentialStatus.corruptData);
+    ) == CredentialStatus.corruptedData);
     assert(oversizedStore is null);
 
     // Independently opened store instances must serialize through the stable
@@ -429,8 +429,8 @@ void main()
 
     CredentialHandle concurrentHandleA;
     CredentialHandle concurrentHandleB;
-    CredentialStatus concurrentStatusA = CredentialStatus.backendFailure;
-    CredentialStatus concurrentStatusB = CredentialStatus.backendFailure;
+    CredentialStatus concurrentStatusA = CredentialStatus.storageFailure;
+    CredentialStatus concurrentStatusB = CredentialStatus.storageFailure;
 
     auto threadA = new Thread({
         auto threadSecret =
