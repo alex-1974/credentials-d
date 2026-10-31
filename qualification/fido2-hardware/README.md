@@ -46,7 +46,10 @@ automatically. This avoids relying on unstable `/dev/hidrawN` numbering.
 `--device-a /dev/hidrawN` remains available when several devices are
 attached.
 
-The operator will be asked to touch the key multiple times.
+The operator is prompted before every individual operation that can require
+user presence. For each prompt, release the sensor, wait until the authenticator
+starts blinking, then touch once. This avoids visually conflating consecutive
+CTAP operations into one apparently slow touch.
 
 Older PIN-protected CTAP2.0 authenticators may additionally require the PIN
 while creating the qualification credential. The runner detects
@@ -148,18 +151,21 @@ OS, native-library versions, non-secret authenticator product/manufacturer
 metadata and PASS/SKIP/UNSUPPORTED results. It contains no PIN, hmac-secret,
 vault key, credential plaintext, or serialized envelope.
 
-## Completion rule
+## Qualification status
 
-Issue #36 may be closed only after committed or otherwise retained evidence
-shows:
+Issue #36 was completed on 2026-10-31. Physical evidence on a YubiKey 5.2.4
+established hmac-secret enrollment and derivation, touch-only/user-presence,
+UV/PIN, wrong-PIN rejection, vault reopen/unlock, tamper rejection, independent
+wrong-credential rejection and passphrase recovery.
 
-- one physical hmac-secret authenticator PASS for user presence;
-- UV/PIN PASS on a capable authenticator, or an explicit device-specific
-  UNSUPPORTED result plus a PASS on another capable authenticator before
-  claiming UV production qualification;
-- wrong-authenticator PASS when a second key is available;
-- independent backup-key PASS with A physically absent when a second key is
-  available;
-- both DMD and LDC exercised where practical.
+DMD 2.111.0 was exercised physically. The locally installed LDC 1.42.0 was
+also exercised physically; CI covers the supported LDC 1.41.0 baseline.
+
+The optional second-authenticator scenarios were skipped because no second
+physical key was available. They are not part of the qualified claim.
+
+The prompt-per-touch changes in this fixture are interaction/observability
+hardening only; they do not change the qualified FIDO2 protocol or vault
+cryptography.
 
 Do not use real application credentials in this fixture.
