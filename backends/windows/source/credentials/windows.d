@@ -1,12 +1,21 @@
 /**
- * Public Windows credential-store API.
+ * Credential storage for Windows applications.
+ *
+ * Use WindowsCredentialStore when credentials should remain available to the
+ * current Windows user across application runs.
  *
  * Examples:
  * ---
- * import credentials : CredentialNamespace;
+ * import credentials :
+ *     CredentialHandle,
+ *     CredentialNamespace;
  *
- * auto ns = CredentialNamespace("org.example.application");
- * auto store = new WindowsCredentialStore(ns);
+ * auto store = new WindowsCredentialStore(
+ *     CredentialNamespace("org.example.application")
+ * );
+ *
+ * CredentialHandle handle;
+ * store.save(secret, handle);
  * ---
  */
 module credentials.windows;
